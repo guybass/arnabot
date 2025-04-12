@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { TaskDependency } from '@/api/entities';
 import { Button } from '@/components/ui/button';
@@ -9,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Link2, X, Plus, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useEffect, useState } from 'react';
 
 export default function DependencySelector({ task, tasks, onDependencyChange }) {
   const [showDependencyDialog, setShowDependencyDialog] = useState(false);
@@ -28,11 +30,12 @@ export default function DependencySelector({ task, tasks, onDependencyChange }) 
 
   const loadDependencies = async () => {
     try {
-      // Get dependencies where this task is either source or target
-      const deps = await TaskDependency.filter({ project_id: task.project_id });
-      setDependencies(deps.filter(d => 
-        d.source_task_id === task.id || d.target_task_id === task.id
-      ));
+      // Use backend function to get task with dependencies
+      const result = await invokeBeckendFunction('getTaskWithDependencies', {
+        id: task.id
+      });
+      
+      setDependencies(result.dependencies);
     } catch (error) {
       console.error("Error loading dependencies:", error);
     }
@@ -44,16 +47,15 @@ export default function DependencySelector({ task, tasks, onDependencyChange }) 
       return;
     }
 
-    if (dependencies.some(d => 
-      (d.source_task_id === task.id && d.target_task_id === newDependency.target_task_id) ||
-      (d.target_task_id === task.id && d.source_task_id === newDependency.target_task_id)
-    )) {
-      setError("This dependency already exists");
-      return;
-    }
-
     try {
-      await TaskDependency.create(newDependency);
+      // Create dependency using backend function
+      await invokeBeckendFunction('createTask', {
+        body: {
+          ...task,
+          dependencies: [...dependencies, newDependency]
+        }
+      });
+
       await loadDependencies();
       setNewDependency({
         ...newDependency,
@@ -63,17 +65,30 @@ export default function DependencySelector({ task, tasks, onDependencyChange }) 
       setError('');
       onDependencyChange();
     } catch (error) {
-      setError("Failed to create dependency");
+      setError(error.message || "Failed to create dependency");
     }
   };
 
   const removeDependency = async (dependencyId) => {
     try {
-      await TaskDependency.delete(dependencyId);
+      // Update task with removed dependency
+      await invokeBeckendFunction('updateTask', {
+        id: task.id,
+        body: {
+          ...task,
+          dependencies: dependencies.filter(d => d.id !== dependencyId)
+        }
+      });
+
       await loadDependencies();
       onDependencyChange();
     } catch (error) {
       console.error("Error removing dependency:", error);
+      toast({
+        title: 'Error',
+        description: 'Failed to remove dependency',
+        status: 'error'
+      });
     }
   };
 

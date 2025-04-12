@@ -2,11 +2,15 @@ import Layout from "./Layout.jsx";
 
 import Dashboard from "./Dashboard";
 
+import TaskDependencyGraph from "./TaskDependencyGraph";
+
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
     
     Dashboard: Dashboard,
+    
+    TaskDependencyGraph: TaskDependencyGraph,
     
 }
 
@@ -36,6 +40,8 @@ function PagesContent() {
                 
                 
                 <Route path="/Dashboard" element={<Dashboard />} />
+                
+                <Route path="/TaskDependencyGraph" element={<TaskDependencyGraph />} />
                 
             </Routes>
         </Layout>
