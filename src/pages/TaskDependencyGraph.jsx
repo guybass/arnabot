@@ -2,91 +2,84 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
-import ReactFlow, { 
-  Background, 
-  Controls,
-  MiniMap
-} from 'react-flow-renderer';
-
-const nodeTypes = {
-  todo: '#gray',
-  in_progress: '#blue',
-  review: '#yellow',
-  done: '#green'
-};
+import { Task, TaskDependency } from '@/api/entities';
+import { Loader2 } from 'lucide-react';
 
 export default function TaskDependencyGraph() {
   const { projectId } = useParams();
-  const [graph, setGraph] = useState(null);
+  const [tasks, setTasks] = useState([]);
+  const [dependencies, setDependencies] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadGraph();
+    loadData();
   }, [projectId]);
 
-  const loadGraph = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const result = await invokeBeckendFunction('getTaskDependencyGraph', {
-        project_id: projectId
-      });
+      const [projectTasks, projectDeps] = await Promise.all([
+        Task.filter({ project_id: projectId }),
+        TaskDependency.filter({ project_id: projectId })
+      ]);
       
-      // Transform the graph data for ReactFlow
-      const elements = [
-        ...result.nodes.map(node => ({
-          id: node.id,
-          data: { 
-            label: node.label,
-            status: node.status,
-            priority: node.priority
-          },
-          position: { x: 0, y: 0 }, // You might want to implement proper layout
-          style: {
-            background: nodeTypes[node.status],
-            border: '1px solid #ccc',
-            padding: 10,
-            borderRadius: 5
-          }
-        })),
-        ...result.edges.map(edge => ({
-          id: `e${edge.from}-${edge.to}`,
-          source: edge.from,
-          target: edge.to,
-          label: edge.type,
-          animated: edge.type === 'blocks',
-          style: { stroke: edge.type === 'blocks' ? '#ff0000' : '#000000' }
-        }))
-      ];
-
-      setGraph(elements);
+      setTasks(projectTasks);
+      setDependencies(projectDeps);
     } catch (error) {
-      console.error('Error loading dependency graph:', error);
+      console.error('Error loading dependency data:', error);
     } finally {
       setLoading(false);
     }
   };
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return (
-    <Card className="h-[800px]">
-      <ReactFlow
-        elements={graph}
-        nodesDraggable
-        nodesConnectable={false}
-        defaultZoom={1.5}
-        minZoom={0.2}
-        maxZoom={4}
-      >
-        <Background />
-        <Controls />
-        <MiniMap 
-          nodeColor={node => nodeTypes[node.data.status]}
-          nodeStrokeWidth={3}
-        />
-      </ReactFlow>
+    <Card className="p-6">
+      <h2 className="text-2xl font-bold mb-4">Task Dependencies</h2>
+      <div className="space-y-4">
+        {tasks.map(task => (
+          <div key={task.id} className="border p-4 rounded-lg">
+            <h3 className="font-medium">{task.title}</h3>
+            <div className="mt-2">
+              <h4 className="text-sm text-gray-500">Dependencies:</h4>
+              <ul className="mt-1 space-y-1">
+                {dependencies
+                  .filter(d => d.source_task_id === task.id)
+                  .map(dep => {
+                    const targetTask = tasks.find(t => t.id === dep.target_task_id);
+                    return (
+                      <li key={dep.id} className="text-sm">
+                        {dep.type} → {targetTask?.title || 'Unknown task'}
+                      </li>
+                    );
+                  })}
+              </ul>
+            </div>
+            <div className="mt-2">
+              <h4 className="text-sm text-gray-500">Required by:</h4>
+              <ul className="mt-1 space-y-1">
+                {dependencies
+                  .filter(d => d.target_task_id === task.id)
+                  .map(dep => {
+                    const sourceTask = tasks.find(t => t.id === dep.source_task_id);
+                    return (
+                      <li key={dep.id} className="text-sm">
+                        {sourceTask?.title || 'Unknown task'} → {dep.type}
+                      </li>
+                    );
+                  })}
+              </ul>
+            </div>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }

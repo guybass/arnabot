@@ -32,7 +32,6 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import DependencySelector from './DependencySelector';
-import { useEffect, useState } from 'react';
 
 const DEFAULT_COLUMNS = {
   todo: { title: 'To Do', color: 'bg-gray-100' },
@@ -104,10 +103,16 @@ export default function TaskBoard({ tasks, project, onTasksChange }) {
   };
 
   const createTask = async () => {
-    await Task.create(newTask);
-    setShowNewTask(false);
-    resetTaskForm();
-    onTasksChange();
+    try {
+      await invokeBackendFunction('createTask', {
+        body: newTask
+      });
+      setShowNewTask(false);
+      resetTaskForm();
+      onTasksChange();
+    } catch (error) {
+      console.error('Error creating task:', error);
+    }
   };
   
   const updateTask = async () => {
@@ -148,33 +153,11 @@ export default function TaskBoard({ tasks, project, onTasksChange }) {
 
   const updateTaskStatus = async (taskId, newStatus) => {
     try {
-      // Call backend function to update status and handle dependencies
-      const result = await invokeBeckendFunction('updateDependentTaskStatuses', {
-        task_id: taskId,
-        new_status: newStatus
-      });
-
-      // Show notifications for dependent updates if any
-      if (result.dependent_updates.length > 0) {
-        // You'll need to implement your notification system
-        result.dependent_updates.forEach(update => {
-          toast({
-            title: 'Task Unblocked',
-            description: `Task "${update.task.title}" is now unblocked and ready to start.`,
-            status: 'info'
-          });
-        });
-      }
-
-      // Refresh tasks
+      await Task.update(taskId, { status: newStatus });
       onTasksChange();
     } catch (error) {
+      // Handle error (show notification, etc.)
       console.error('Error updating task status:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to update task status',
-        status: 'error'
-      });
     }
   };
 
@@ -1315,4 +1298,3 @@ export default function TaskBoard({ tasks, project, onTasksChange }) {
     </Card>
   );
 }
-

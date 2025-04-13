@@ -15,6 +15,7 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [projectStats, setProjectStats] = useState(null);
 
   useEffect(() => {
     loadProjects();
@@ -44,6 +45,41 @@ export default function Dashboard() {
     setTasks(projectTasks);
     setDocuments(projectDocs);
     setLoading(false);
+  };
+
+  const loadProjectStats = async () => {
+    if (!selectedProject) return;
+    
+    try {
+      // Calculate stats directly instead of using backend function
+      const projectTasks = await Task.filter({ project_id: selectedProject.id });
+      const teamMembers = await TeamMember.filter({ project_id: selectedProject.id });
+      
+      const stats = {
+        taskStats: {
+          total: projectTasks.length,
+          byStatus: projectTasks.reduce((acc, task) => {
+            acc[task.status] = (acc[task.status] || 0) + 1;
+            return acc;
+          }, {}),
+          byPriority: projectTasks.reduce((acc, task) => {
+            acc[task.priority] = (acc[task.priority] || 0) + 1;
+            return acc;
+          }, {})
+        },
+        teamStats: {
+          total: teamMembers?.length || 0,
+          byRole: (teamMembers || []).reduce((acc, member) => {
+            acc[member.role] = (acc[member.role] || 0) + 1;
+            return acc;
+          }, {})
+        }
+      };
+      
+      setProjectStats(stats);
+    } catch (error) {
+      console.error('Error loading project stats:', error);
+    }
   };
 
   const generateProjectUpdate = async () => {

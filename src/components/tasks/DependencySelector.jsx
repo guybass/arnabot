@@ -1,16 +1,14 @@
-
 import React, { useState, useEffect } from 'react';
 import { TaskDependency } from '@/api/entities';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Search } from '@/components/ui/input';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Link2, X, Plus, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useEffect, useState } from 'react';
 
 export default function DependencySelector({ task, tasks, onDependencyChange }) {
   const [showDependencyDialog, setShowDependencyDialog] = useState(false);
@@ -25,17 +23,17 @@ export default function DependencySelector({ task, tasks, onDependencyChange }) 
   const [error, setError] = useState('');
 
   useEffect(() => {
-    loadDependencies();
+    if (task?.id) {
+      loadDependencies();
+    }
   }, [task]);
 
   const loadDependencies = async () => {
     try {
-      // Use backend function to get task with dependencies
-      const result = await invokeBeckendFunction('getTaskWithDependencies', {
-        id: task.id
-      });
-      
-      setDependencies(result.dependencies);
+      const deps = await TaskDependency.filter({ project_id: task.project_id });
+      setDependencies(deps.filter(d => 
+        d.source_task_id === task.id || d.target_task_id === task.id
+      ));
     } catch (error) {
       console.error("Error loading dependencies:", error);
     }
@@ -47,15 +45,16 @@ export default function DependencySelector({ task, tasks, onDependencyChange }) 
       return;
     }
 
-    try {
-      // Create dependency using backend function
-      await invokeBeckendFunction('createTask', {
-        body: {
-          ...task,
-          dependencies: [...dependencies, newDependency]
-        }
-      });
+    if (dependencies.some(d => 
+      (d.source_task_id === task.id && d.target_task_id === newDependency.target_task_id) ||
+      (d.target_task_id === task.id && d.source_task_id === newDependency.target_task_id)
+    )) {
+      setError("This dependency already exists");
+      return;
+    }
 
+    try {
+      await TaskDependency.create(newDependency);
       await loadDependencies();
       setNewDependency({
         ...newDependency,
@@ -65,30 +64,17 @@ export default function DependencySelector({ task, tasks, onDependencyChange }) 
       setError('');
       onDependencyChange();
     } catch (error) {
-      setError(error.message || "Failed to create dependency");
+      setError("Failed to create dependency");
     }
   };
 
   const removeDependency = async (dependencyId) => {
     try {
-      // Update task with removed dependency
-      await invokeBeckendFunction('updateTask', {
-        id: task.id,
-        body: {
-          ...task,
-          dependencies: dependencies.filter(d => d.id !== dependencyId)
-        }
-      });
-
+      await TaskDependency.delete(dependencyId);
       await loadDependencies();
       onDependencyChange();
     } catch (error) {
       console.error("Error removing dependency:", error);
-      toast({
-        title: 'Error',
-        description: 'Failed to remove dependency',
-        status: 'error'
-      });
     }
   };
 
@@ -194,7 +180,7 @@ export default function DependencySelector({ task, tasks, onDependencyChange }) 
                 </Select>
 
                 <div className="flex-1">
-                  <Search
+                  <Input
                     placeholder="Search tasks..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
