@@ -1,118 +1,68 @@
 import React, { useState, useEffect } from 'react';
-import { Project, Task, Document, User } from '@/api/entities';
+import { Project, User } from '@/api/entities';
 import { InvokeLLM } from '@/api/integrations';
-import ProjectHeader from '../components/projects/ProjectHeader';
-import TaskBoard from '../components/tasks/TaskBoard';
-import DocumentSection from '../components/documents/DocumentSection';
-import TeamSection from '../components/team/TeamSection';
-import EmailSection from '../components/communication/EmailSection';
-import AIAssistant from '../components/assistant/AIAssistant';
-import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Loader2, Plus, Calendar, ClipboardList, Briefcase } from 'lucide-react';
+import { format } from 'date-fns';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 
 export default function Dashboard() {
   const [projects, setProjects] = useState([]);
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [tasks, setTasks] = useState([]);
-  const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [projectStats, setProjectStats] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [selectedTab, setSelectedTab] = useState('all');
 
   useEffect(() => {
+    loadCurrentUser();
     loadProjects();
   }, []);
 
-  useEffect(() => {
-    if (selectedProject) {
-      loadProjectData();
+  const loadCurrentUser = async () => {
+    try {
+      const user = await User.me();
+      setCurrentUser(user);
+    } catch (error) {
+      console.error("Error loading current user:", error);
     }
-  }, [selectedProject]);
+  };
 
   const loadProjects = async () => {
-    const fetchedProjects = await Project.list('-created_date');
-    setProjects(fetchedProjects);
-    if (fetchedProjects.length > 0) {
-      setSelectedProject(fetchedProjects[0]);
-    }
-    setLoading(false);
-  };
-
-  const loadProjectData = async () => {
-    setLoading(true);
-    const [projectTasks, projectDocs] = await Promise.all([
-      Task.filter({ project_id: selectedProject.id }, '-updated_date'),
-      Document.filter({ project_id: selectedProject.id }, '-created_date')
-    ]);
-    setTasks(projectTasks);
-    setDocuments(projectDocs);
-    setLoading(false);
-  };
-
-  const loadProjectStats = async () => {
-    if (!selectedProject) return;
-    
     try {
-      // Calculate stats directly instead of using backend function
-      const projectTasks = await Task.filter({ project_id: selectedProject.id });
-      const teamMembers = await TeamMember.filter({ project_id: selectedProject.id });
-      
-      const stats = {
-        taskStats: {
-          total: projectTasks.length,
-          byStatus: projectTasks.reduce((acc, task) => {
-            acc[task.status] = (acc[task.status] || 0) + 1;
-            return acc;
-          }, {}),
-          byPriority: projectTasks.reduce((acc, task) => {
-            acc[task.priority] = (acc[task.priority] || 0) + 1;
-            return acc;
-          }, {})
-        },
-        teamStats: {
-          total: teamMembers?.length || 0,
-          byRole: (teamMembers || []).reduce((acc, member) => {
-            acc[member.role] = (acc[member.role] || 0) + 1;
-            return acc;
-          }, {})
-        }
-      };
-      
-      setProjectStats(stats);
+      const fetchedProjects = await Project.list('-created_date');
+      setProjects(fetchedProjects);
     } catch (error) {
-      console.error('Error loading project stats:', error);
+      console.error("Error loading projects:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const generateProjectUpdate = async () => {
-    const context = {
-      project: selectedProject,
-      tasks: tasks.map(t => ({
-        title: t.title,
-        status: t.status,
-        assignee: t.assigned_to,
-        priority: t.priority
-      })),
-      recentDocuments: documents
-        .filter(d => d.type === 'meeting_notes' || d.type === 'status_update')
-        .slice(0, 5)
-        .map(d => ({ title: d.title, content: d.content }))
-    };
-
-    const prompt = `As a project management AI assistant, generate a comprehensive project status update based on the following context:
-    ${JSON.stringify(context, null, 2)}
-    
-    Include:
-    1. Overall project status and progress
-    2. Key achievements and milestones
-    3. Ongoing tasks and their status
-    4. Potential risks or blockers
-    5. Next steps and recommendations
-    
-    Format the response in a clear, professional manner.`;
-
-    return await InvokeLLM({ prompt });
+  const getStatusColor = (status) => {
+    switch(status) {
+      case 'planning': return 'bg-purple-100 text-purple-800';
+      case 'in_progress': return 'bg-blue-100 text-blue-800';
+      case 'on_hold': return 'bg-yellow-100 text-yellow-800';
+      case 'completed': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
   };
 
-  if (loading && !selectedProject) {
+  const getRecentProjects = () => {
+    return [...projects].sort((a, b) => 
+      new Date(b.updated_date || b.created_date) - new Date(a.updated_date || a.created_date)
+    ).slice(0, 3);
+  };
+
+  const filteredProjects = selectedTab === 'all' 
+    ? projects 
+    : projects.filter(project => project.status === selectedTab);
+
+  if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -123,36 +73,170 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-[1800px] mx-auto p-4 md:p-6 space-y-6">
-        <ProjectHeader 
-          projects={projects}
-          selectedProject={selectedProject}
-          onProjectSelect={setSelectedProject}
-          onProjectsChange={loadProjects}
-        />
-
-        <div className="grid lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 space-y-6">
-            <TaskBoard 
-              tasks={tasks}
-              project={selectedProject}
-              onTasksChange={loadProjectData}
-            />
-            <TeamSection project={selectedProject} />
-            <EmailSection project={selectedProject} />
-            <DocumentSection 
-              documents={documents}
-              project={selectedProject}
-              onDocumentsChange={loadProjectData}
-            />
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+            {currentUser && (
+              <p className="text-gray-500">Welcome back, {currentUser.full_name}</p>
+            )}
           </div>
           
-          <div className="lg:col-span-4">
-            <AIAssistant
-              project={selectedProject}
-              onGenerateUpdate={generateProjectUpdate}
-              onDocumentCreate={loadProjectData}
-            />
+          <div className="flex gap-2">
+            <Link to={createPageUrl('TaskManager')}>
+              <Button variant="outline" className="flex items-center">
+                <ClipboardList className="mr-2 h-4 w-4" />
+                Task Manager
+              </Button>
+            </Link>
+            <Link to={createPageUrl('ProjectDashboard')}>
+              <Button className="flex items-center">
+                <Plus className="mr-2 h-4 w-4" />
+                New Project
+              </Button>
+            </Link>
           </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
+              <Briefcase className="h-4 w-4 text-gray-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{projects.length}</div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">In Progress</CardTitle>
+              <Calendar className="h-4 w-4 text-gray-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {projects.filter(p => p.status === 'in_progress').length}
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Completed</CardTitle>
+              <Calendar className="h-4 w-4 text-gray-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {projects.filter(p => p.status === 'completed').length}
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">On Hold</CardTitle>
+              <Calendar className="h-4 w-4 text-gray-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {projects.filter(p => p.status === 'on_hold').length}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle>Projects</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tabs value={selectedTab} onValueChange={setSelectedTab}>
+                <TabsList className="mb-4">
+                  <TabsTrigger value="all">All</TabsTrigger>
+                  <TabsTrigger value="planning">Planning</TabsTrigger>
+                  <TabsTrigger value="in_progress">In Progress</TabsTrigger>
+                  <TabsTrigger value="on_hold">On Hold</TabsTrigger>
+                  <TabsTrigger value="completed">Completed</TabsTrigger>
+                </TabsList>
+                
+                <div className="space-y-4">
+                  {filteredProjects.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      No projects found
+                    </div>
+                  ) : (
+                    filteredProjects.map(project => (
+                      <Link 
+                        key={project.id}
+                        to={createPageUrl(`ProjectDashboard?projectId=${project.id}`)}
+                        className="block"
+                      >
+                        <div className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h3 className="font-medium text-lg">{project.title}</h3>
+                              <p className="text-gray-500 text-sm line-clamp-1">{project.description}</p>
+                            </div>
+                            <Badge className={getStatusColor(project.status)}>
+                              {project.status.replace('_', ' ')}
+                            </Badge>
+                          </div>
+                          <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
+                            <div>Created: {format(new Date(project.created_date), 'MMM d, yyyy')}</div>
+                            {project.start_date && project.target_date && (
+                              <div>
+                                {format(new Date(project.start_date), 'MMM d')} -&nbsp;
+                                {format(new Date(project.target_date), 'MMM d, yyyy')}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </Link>
+                    ))
+                  )}
+                </div>
+              </Tabs>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Activity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {getRecentProjects().map(project => (
+                  <div key={project.id} className="border-b pb-4 last:border-0">
+                    <div className="font-medium">{project.title}</div>
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <Badge className={getStatusColor(project.status)}>
+                        {project.status.replace('_', ' ')}
+                      </Badge>
+                      <div>
+                        {format(new Date(project.updated_date || project.created_date), 'MMM d, yyyy')}
+                      </div>
+                    </div>
+                    <div className="mt-2">
+                      <Link 
+                        to={createPageUrl(`ProjectDashboard?projectId=${project.id}`)}
+                      >
+                        <Button variant="outline" size="sm" className="w-full">
+                          View Project
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+                
+                {projects.length === 0 && (
+                  <div className="text-center py-4 text-gray-500">
+                    No recent activity
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

@@ -4,6 +4,10 @@ import Dashboard from "./Dashboard";
 
 import TaskDependencyGraph from "./TaskDependencyGraph";
 
+import TaskManager from "./TaskManager";
+
+import ProjectDashboard from "./ProjectDashboard";
+
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
@@ -11,6 +15,10 @@ const PAGES = {
     Dashboard: Dashboard,
     
     TaskDependencyGraph: TaskDependencyGraph,
+    
+    TaskManager: TaskManager,
+    
+    ProjectDashboard: ProjectDashboard,
     
 }
 
@@ -42,6 +50,10 @@ function PagesContent() {
                 <Route path="/Dashboard" element={<Dashboard />} />
                 
                 <Route path="/TaskDependencyGraph" element={<TaskDependencyGraph />} />
+                
+                <Route path="/TaskManager" element={<TaskManager />} />
+                
+                <Route path="/ProjectDashboard" element={<ProjectDashboard />} />
                 
             </Routes>
         </Layout>

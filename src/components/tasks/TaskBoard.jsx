@@ -1,17 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { Task, TaskColumn } from '@/api/entities';
+import { Task, TaskColumn, TeamMember, StatusColumn } from '@/api/entities';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { 
   Plus, 
@@ -28,10 +21,35 @@ import {
   Hash,
   List,
   CheckSquare,
-  ArrowUpDown
+  ArrowUpDown,
+  MoreHorizontal,
+  ChevronDown,
+  ChevronUp,
+  Filter,
+  Search,
+  Code,
+  Database,
+  Cloud,
+  TestTube,
+  Palette,
+  FileText
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import TaskForm from './TaskForm';
+import ColumnManager from './ColumnManager';
 import DependencySelector from './DependencySelector';
+import StatusColumnManager from './StatusColumnManager';
 
 const DEFAULT_COLUMNS = {
   todo: { title: 'To Do', color: 'bg-gray-100' },
@@ -40,115 +58,69 @@ const DEFAULT_COLUMNS = {
   done: { title: 'Done', color: 'bg-green-50' }
 };
 
-const FIELD_TYPE_OPTIONS = [
-  { value: 'text', label: 'Text', icon: Type },
-  { value: 'number', label: 'Number', icon: Hash },
-  { value: 'date', label: 'Date', icon: Calendar },
-  { value: 'select', label: 'Select (One)', icon: ArrowUpDown },
-  { value: 'multiselect', label: 'Select (Multiple)', icon: List },
-  { value: 'user', label: 'User', icon: User },
-  { value: 'checkbox', label: 'Checkbox', icon: CheckSquare }
-];
-
 export default function TaskBoard({ tasks, project, onTasksChange }) {
   const [showNewTask, setShowNewTask] = useState(false);
   const [showEditTask, setShowEditTask] = useState(false);
   const [showColumnManager, setShowColumnManager] = useState(false);
-  const [showAddColumn, setShowAddColumn] = useState(false);
-  const [showEditColumn, setShowEditColumn] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [columns, setColumns] = useState([]);
-  const [editingColumn, setEditingColumn] = useState(null);
-  const [newTask, setNewTask] = useState({
-    project_id: project?.id,
-    title: '',
-    description: '',
-    role: 'other',
-    status: 'todo',
-    priority: 'medium',
-    assigned_to: '',
-    due_date: '',
-    custom_fields: {}
-  });
-  
-  const [newColumn, setNewColumn] = useState({
-    project_id: project?.id,
-    title: '',
-    field_key: '',
-    type: 'text',
-    default_value: '',
-    options: [],
-    is_required: false,
-    order: 0,
-    is_visible: true
-  });
-
   const [viewMode, setViewMode] = useState('board');
-  const [newOptionText, setNewOptionText] = useState('');
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [filters, setFilters] = useState({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedTasks, setExpandedTasks] = useState({});
+  const [tasksByStatus, setTasksByStatus] = useState({});
+  const [showTaskRelationships, setShowTaskRelationships] = useState({});
+  const [statusColumns, setStatusColumns] = useState([]);
+  const [showStatusColumnManager, setShowStatusColumnManager] = useState(false);
 
-  // Load columns when project changes
+  // Load custom columns and team members
   useEffect(() => {
-    if (project) {
+    if (project?.id) {
       loadColumns();
+      loadStatusColumns();
+      loadTeamMembers();
     }
   }, [project]);
 
+  const loadStatusColumns = async () => {
+    try {
+      const columns = await StatusColumn.filter(
+        { project_id: project.id },
+        'order'
+      );
+      setStatusColumns(columns);
+    } catch (error) {
+      console.error('Error loading status columns:', error);
+    }
+  };
+
+  // Update tasks when they change or filters change
+  useEffect(() => {
+    if (tasks.length > 0) {
+      organizeTasksByStatus();
+    }
+  }, [tasks, filters, searchQuery]);
+
   const loadColumns = async () => {
     try {
-      const customColumns = await TaskColumn.filter({ project_id: project.id }, 'order');
-      setColumns(customColumns);
+      const projectColumns = await TaskColumn.filter(
+        { project_id: project.id },
+        'order'
+      );
+      setColumns(projectColumns);
     } catch (error) {
-      console.error("Error loading columns:", error);
+      console.error('Error loading columns:', error);
     }
   };
 
-  const createTask = async () => {
+  const loadTeamMembers = async () => {
     try {
-      await invokeBackendFunction('createTask', {
-        body: newTask
-      });
-      setShowNewTask(false);
-      resetTaskForm();
-      onTasksChange();
+      const members = await TeamMember.filter({ project_id: project.id });
+      setTeamMembers(members);
     } catch (error) {
-      console.error('Error creating task:', error);
+      console.error('Error loading team members:', error);
     }
-  };
-  
-  const updateTask = async () => {
-    if (!selectedTask) return;
-    
-    await Task.update(selectedTask.id, {
-      ...selectedTask,
-      ...newTask
-    });
-    
-    setShowEditTask(false);
-    resetTaskForm();
-    onTasksChange();
-  };
-
-  const resetTaskForm = () => {
-    setNewTask({
-      project_id: project?.id,
-      title: '',
-      description: '',
-      role: 'other',
-      status: 'todo',
-      priority: 'medium',
-      assigned_to: '',
-      due_date: '',
-      custom_fields: {}
-    });
-  };
-
-  const editTask = (task) => {
-    setSelectedTask(task);
-    setNewTask({
-      ...task,
-      project_id: project.id
-    });
-    setShowEditTask(true);
   };
 
   const updateTaskStatus = async (taskId, newStatus) => {
@@ -156,7 +128,6 @@ export default function TaskBoard({ tasks, project, onTasksChange }) {
       await Task.update(taskId, { status: newStatus });
       onTasksChange();
     } catch (error) {
-      // Handle error (show notification, etc.)
       console.error('Error updating task status:', error);
     }
   };
@@ -170,1131 +141,653 @@ export default function TaskBoard({ tasks, project, onTasksChange }) {
     await updateTaskStatus(taskId, newStatus);
   };
 
-  const createColumn = async () => {
-    // Generate a sanitized field key if none provided
-    if (!newColumn.field_key) {
-      newColumn.field_key = newColumn.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '_')
-        .replace(/_+/g, '_')
-        .replace(/^_|_$/g, '');
+  const handleTaskCreate = async (taskData) => {
+    try {
+      await Task.create(taskData);
+      setShowNewTask(false);
+      onTasksChange();
+    } catch (error) {
+      console.error('Error creating task:', error);
     }
-    
-    // Set order to be the last
-    newColumn.order = columns.length;
-    
-    await TaskColumn.create(newColumn);
-    setShowAddColumn(false);
-    resetColumnForm();
-    loadColumns();
-  };
-  
-  const updateColumn = async () => {
-    if (!editingColumn) return;
-    
-    await TaskColumn.update(editingColumn.id, newColumn);
-    setShowEditColumn(false);
-    resetColumnForm();
-    loadColumns();
-  };
-  
-  const deleteColumn = async (columnId) => {
-    await TaskColumn.delete(columnId);
-    loadColumns();
-  };
-  
-  const resetColumnForm = () => {
-    setNewColumn({
-      project_id: project?.id,
-      title: '',
-      field_key: '',
-      type: 'text',
-      default_value: '',
-      options: [],
-      is_required: false,
-      order: 0,
-      is_visible: true
-    });
-    setNewOptionText('');
-  };
-  
-  const addOption = () => {
-    if (newOptionText && !newColumn.options.includes(newOptionText)) {
-      setNewColumn({
-        ...newColumn,
-        options: [...newColumn.options, newOptionText]
-      });
-      setNewOptionText('');
-    }
-  };
-  
-  const removeOption = (option) => {
-    setNewColumn({
-      ...newColumn,
-      options: newColumn.options.filter(o => o !== option),
-      default_value: newColumn.default_value === option ? '' : newColumn.default_value
-    });
   };
 
-  const handleCustomFieldChange = (field_key, value) => {
-    setNewTask(prev => ({
-      ...prev,
-      custom_fields: {
-        ...prev.custom_fields,
-        [field_key]: value
+  const handleTaskUpdate = async (taskData) => {
+    try {
+      await Task.update(selectedTask.id, taskData);
+      setShowEditTask(false);
+      onTasksChange();
+    } catch (error) {
+      console.error('Error updating task:', error);
+    }
+  };
+
+  const handleTaskDelete = async (taskId) => {
+    try {
+      await Task.delete(taskId);
+      onTasksChange();
+    } catch (error) {
+      console.error('Error deleting task:', error);
+    }
+  };
+
+  const getChildTasks = (taskId) => {
+    return tasks.filter(task => task.parent_task_id === taskId && task.hierarchy_level === 'child');
+  };
+
+  const getSiblingTasks = (taskId, parentId) => {
+    if (!parentId) return [];
+    return tasks.filter(
+      task => task.parent_task_id === parentId && 
+              task.hierarchy_level === 'sibling' && 
+              task.id !== taskId
+    );
+  };
+
+  const organizeTasksByStatus = () => {
+    const filtered = tasks.filter(task => {
+      // Filter by search query
+      const matchesSearch = searchQuery
+        ? task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          task.description?.toLowerCase().includes(searchQuery.toLowerCase())
+        : true;
+      
+      // Filter by other criteria
+      let matches = true;
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value && value !== 'all') {
+          if (key === 'assigned_to') {
+            matches = matches && task.assigned_to === value;
+          } else if (key === 'priority') {
+            matches = matches && task.priority === value;
+          } else if (key === 'role') {
+            matches = matches && task.role === value;
+          } else if (key.startsWith('custom_') && task.custom_fields) {
+            const fieldKey = key.replace('custom_', '');
+            matches = matches && task.custom_fields[fieldKey] === value;
+          }
+        }
+      });
+      
+      return matchesSearch && matches;
+    });
+    
+    // Group tasks by status
+    const grouped = {};
+    
+    (statusColumns.length > 0 ? statusColumns : [
+      { key: 'todo', title: 'To Do', color: 'gray' },
+      { key: 'in_progress', title: 'In Progress', color: 'blue' },
+      { key: 'review', title: 'Review', color: 'yellow' },
+      { key: 'done', title: 'Done', color: 'green' }
+    ]).forEach(column => {
+      grouped[column.key] = [];
+    });
+    
+    filtered.forEach(task => {
+      if (grouped[task.status]) {
+        grouped[task.status].push(task);
       }
+    });
+    
+    setTasksByStatus(grouped);
+  };
+
+  const toggleTaskExpand = (taskId) => {
+    setExpandedTasks(prev => ({
+      ...prev,
+      [taskId]: !prev[taskId]
     }));
   };
 
-  const priorityColors = {
-    low: 'bg-blue-100 text-blue-800',
-    medium: 'bg-yellow-100 text-yellow-800',
-    high: 'bg-orange-100 text-orange-800',
-    urgent: 'bg-red-100 text-red-800'
+  const toggleTaskRelationships = (taskId) => {
+    setShowTaskRelationships(prev => ({
+      ...prev,
+      [taskId]: !prev[taskId]
+    }));
   };
 
-  const roleColors = {
-    frontend: 'bg-purple-100 text-purple-800',
-    backend: 'bg-indigo-100 text-indigo-800',
-    devops: 'bg-cyan-100 text-cyan-800',
-    qa: 'bg-emerald-100 text-emerald-800',
-    design: 'bg-pink-100 text-pink-800',
-    product: 'bg-amber-100 text-amber-800',
-    other: 'bg-gray-100 text-gray-800'
-  };
-
-  const formatFieldValue = (task, column) => {
-    const value = task.custom_fields?.[column.field_key];
-    
-    if (value === undefined || value === null || value === '') {
-      return '-';
-    }
-    
-    switch (column.type) {
-      case 'date':
-        return format(new Date(value), 'MMM d, yyyy');
-      case 'checkbox':
-        return value ? 'Yes' : 'No';
-      case 'multiselect':
-        return Array.isArray(value) ? value.join(', ') : value;
-      default:
-        return value;
-    }
-  };
-
-  const renderTaskCard = (task) => {
+  const renderFilters = () => {
     return (
-      <div className="bg-white p-3 rounded-lg shadow-sm">
-        <div className="flex flex-col gap-2">
-          <span className="font-medium">{task.title}</span>
-          {task.description && (
-            <p className="text-sm text-gray-600 line-clamp-2">{task.description}</p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <Badge className={priorityColors[task.priority]}>
-              {task.priority}
-            </Badge>
-            <Badge className={roleColors[task.role]}>
-              {task.role}
-            </Badge>
-          </div>
-          
-          {/* Add DependencySelector */}
-          <DependencySelector 
-            task={task}
-            tasks={tasks}
-            onDependencyChange={onTasksChange}
+      <div className="mb-4 flex flex-wrap gap-2">
+        <div className="flex-1 min-w-[200px]">
+          <Input
+            placeholder="Search tasks..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full"
+            prefix={<Search className="w-4 h-4 mr-2 opacity-50" />}
           />
-          
-          {/* Render visible custom fields */}
-          {columns
-            .filter(col => col.is_visible)
-            .map(column => {
-              const value = formatFieldValue(task, column);
-              if (value === '-') return null;
-              
-              return (
-                <div key={column.field_key} className="text-xs text-gray-600 flex gap-1">
-                  <span className="font-medium">{column.title}:</span> {value}
-                </div>
-              );
-            })}
-          
-          {(task.assigned_to || task.due_date) && (
-            <div className="flex items-center gap-3 text-sm text-gray-500">
-              {task.assigned_to && (
-                <div className="flex items-center gap-1">
-                  <User className="w-4 h-4" />
-                  {task.assigned_to.split('@')[0]}
-                </div>
-              )}
-              {task.due_date && (
-                <div className="flex items-center gap-1">
-                  <Calendar className="w-4 h-4" />
-                  {format(new Date(task.due_date), 'MMM d')}
-                </div>
-              )}
-            </div>
-          )}
-          
-          <div className="flex justify-end">
-            <Button 
-              variant="ghost" 
-              size="sm"
-              className="h-7 w-7 p-0" 
-              onClick={(e) => {
-                e.stopPropagation();
-                editTask(task);
-              }}
-            >
-              <Edit className="h-3.5 w-3.5" />
-            </Button>
-          </div>
         </div>
+        
+        <Select
+          value={filters.priority || 'all'}
+          onValueChange={(value) => setFilters(prev => ({ ...prev, priority: value }))}
+        >
+          <SelectTrigger className="w-[150px]">
+            <SelectValue placeholder="Priority" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Priorities</SelectItem>
+            <SelectItem value="low">Low</SelectItem>
+            <SelectItem value="medium">Medium</SelectItem>
+            <SelectItem value="high">High</SelectItem>
+            <SelectItem value="urgent">Urgent</SelectItem>
+          </SelectContent>
+        </Select>
+        
+        <Select
+          value={filters.assigned_to || 'all'}
+          onValueChange={(value) => setFilters(prev => ({ ...prev, assigned_to: value }))}
+        >
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="Assignee" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Assignees</SelectItem>
+            <SelectItem value={null}>Unassigned</SelectItem>
+            {teamMembers.map(member => (
+              <SelectItem key={member.id} value={member.email}>
+                {member.email}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        
+        <Select
+          value={filters.role || 'all'}
+          onValueChange={(value) => setFilters(prev => ({ ...prev, role: value }))}
+        >
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Role" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Roles</SelectItem>
+            <SelectItem value="frontend">Frontend</SelectItem>
+            <SelectItem value="backend">Backend</SelectItem>
+            <SelectItem value="devops">DevOps</SelectItem>
+            <SelectItem value="qa">QA</SelectItem>
+            <SelectItem value="design">Design</SelectItem>
+            <SelectItem value="product">Product</SelectItem>
+            <SelectItem value="other">Other</SelectItem>
+          </SelectContent>
+        </Select>
+        
+        {columns.filter(col => col.type === 'select').map(column => (
+          <Select
+            key={column.field_key}
+            value={filters[`custom_${column.field_key}`] || 'all'}
+            onValueChange={(value) => 
+              setFilters(prev => ({ 
+                ...prev, 
+                [`custom_${column.field_key}`]: value 
+              }))
+            }
+          >
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder={column.title} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All {column.title}</SelectItem>
+              {column.options.map(option => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ))}
+        
+        {Object.keys(filters).length > 0 && (
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => setFilters({})}
+            className="h-10"
+          >
+            Clear Filters
+          </Button>
+        )}
       </div>
     );
   };
 
-  const renderTaskInTable = (task) => {
-    return (
-      <tr key={task.id} className="hover:bg-gray-50">
-        <td className="p-2 border-b">
-          <div className="font-medium">{task.title}</div>
-          {/* Add DependencySelector in table view */}
-          <div className="mt-1">
-            <DependencySelector 
-              task={task}
-              tasks={tasks}
-              onDependencyChange={onTasksChange}
-            />
+  const renderTaskCard = (task, isDraggable = true) => {
+    const childTasks = getChildTasks(task.id);
+    const hasChildren = childTasks.length > 0;
+    const parentTask = task.parent_task_id ? tasks.find(t => t.id === task.parent_task_id) : null;
+    const siblingTasks = parentTask ? getSiblingTasks(task.id, task.parent_task_id) : [];
+    const hasSiblings = siblingTasks.length > 0;
+    const isExpanded = expandedTasks[task.id];
+    const showRelationships = showTaskRelationships[task.id];
+    
+    const priorityColors = {
+      low: 'bg-blue-100 text-blue-800',
+      medium: 'bg-yellow-100 text-yellow-800',
+      high: 'bg-orange-100 text-orange-800',
+      urgent: 'bg-red-100 text-red-800',
+    };
+    
+    const roleIcons = {
+      frontend: <Code className="w-4 h-4" />,
+      backend: <Database className="w-4 h-4" />,
+      devops: <Cloud className="w-4 h-4" />,
+      qa: <TestTube className="w-4 h-4" />,
+      design: <Palette className="w-4 h-4" />,
+      product: <FileText className="w-4 h-4" />,
+      other: <div className="w-4 h-4" />
+    };
+    
+    const taskCard = (
+      <div className={`p-3 bg-white rounded-md border shadow-sm ${
+        task.parent_task_id ? 'border-l-4 border-l-blue-400' : ''
+      } ${task.hierarchy_level === 'sibling' ? 'border-l-4 border-l-purple-400' : ''}`}>
+        <div className="flex justify-between items-start gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between mb-2">
+              <div className="flex items-center gap-1">
+                {hasChildren && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 w-5 p-0"
+                    onClick={() => toggleTaskExpand(task.id)}
+                  >
+                    {isExpanded ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+                <h4 className="font-medium truncate">{task.title}</h4>
+              </div>
+              <div className="flex-shrink-0 flex gap-1">
+                {parentTask || hasChildren || hasSiblings ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => toggleTaskRelationships(task.id)}
+                  >
+                    <Columns className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
+                
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                      <MoreHorizontal className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setSelectedTask(task);
+                        setShowEditTask(true);
+                      }}
+                    >
+                      <Edit className="mr-2 h-4 w-4" />
+                      Edit Task
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleTaskDelete(task.id)}
+                      className="text-red-600"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete Task
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+            
+            {task.description && (
+              <p className={`text-sm text-gray-500 mb-2 ${!isExpanded && 'line-clamp-2'}`}>
+                {task.description}
+              </p>
+            )}
+            
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <Badge variant="outline" className={priorityColors[task.priority]}>
+                {task.priority}
+              </Badge>
+              
+              {task.role !== 'other' && (
+                <Badge variant="outline" className="flex items-center gap-1">
+                  {roleIcons[task.role]}
+                  <span>{task.role}</span>
+                </Badge>
+              )}
+              
+              {task.assigned_to && (
+                <Badge variant="outline" className="flex items-center gap-1">
+                  <User className="w-3 h-3" />
+                  <span className="truncate max-w-[100px]">
+                    {task.assigned_to.split('@')[0]}
+                  </span>
+                </Badge>
+              )}
+              
+              {task.due_date && (
+                <Badge variant="outline" className="flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  {format(new Date(task.due_date), 'MMM d')}
+                </Badge>
+              )}
+              
+              {/* Custom fields */}
+              {columns.length > 0 && task.custom_fields && (
+                <>
+                  {columns
+                    .filter(col => col.is_visible && task.custom_fields[col.field_key])
+                    .map(col => {
+                      const value = task.custom_fields[col.field_key];
+                      if (!value || (Array.isArray(value) && value.length === 0)) return null;
+                      
+                      if (Array.isArray(value)) {
+                        return value.map(v => (
+                          <Badge key={`${col.field_key}-${v}`} variant="secondary" className="text-xs">
+                            {col.title}: {v}
+                          </Badge>
+                        ));
+                      }
+                      
+                      if (col.type === 'checkbox' && value === true) {
+                        return (
+                          <Badge key={col.field_key} variant="outline" className="flex items-center gap-1">
+                            <Check className="w-3 h-3" />
+                            {col.title}
+                          </Badge>
+                        );
+                      }
+                      
+                      if (value && typeof value !== 'boolean') {
+                        return (
+                          <Badge key={col.field_key} variant="secondary" className="text-xs">
+                            {col.title}: {value}
+                          </Badge>
+                        );
+                      }
+                      
+                      return null;
+                    })}
+                </>
+              )}
+            </div>
+            
+            {showRelationships && (
+              <div className="mt-3 pt-2 border-t text-xs space-y-1.5">
+                {parentTask && (
+                  <div>
+                    <span className="text-gray-500">Parent:</span>{' '}
+                    <Badge variant="outline" className="text-xs">
+                      {parentTask.title}
+                    </Badge>
+                  </div>
+                )}
+                
+                {hasChildren && (
+                  <div>
+                    <span className="text-gray-500">Subtasks:</span>{' '}
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {childTasks.map(child => (
+                        <Badge key={child.id} variant="outline" className="text-xs">
+                          {child.title}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {hasSiblings && (
+                  <div>
+                    <span className="text-gray-500">Related tasks:</span>{' '}
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {siblingTasks.map(sibling => (
+                        <Badge key={sibling.id} variant="outline" className="text-xs">
+                          {sibling.title}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                <div className="mt-2">
+                  <DependencySelector
+                    task={task}
+                    tasks={tasks}
+                    onDependencyChange={onTasksChange}
+                  />
+                </div>
+              </div>
+            )}
           </div>
-        </td>
-        <td className="p-2 border-b">
-          <Badge className={priorityColors[task.priority]}>
-            {task.priority}
-          </Badge>
-        </td>
-        <td className="p-2 border-b">
-          <Badge className={`bg-${task.status === 'todo' ? 'gray' : task.status === 'in_progress' ? 'blue' : task.status === 'review' ? 'yellow' : 'green'}-100 text-${task.status === 'todo' ? 'gray' : task.status === 'in_progress' ? 'blue' : task.status === 'review' ? 'yellow' : 'green'}-800`}>
-            {task.status.replace('_', ' ')}
-          </Badge>
-        </td>
+        </div>
         
-        {/* Render custom columns */}
-        {columns
-          .filter(col => col.is_visible)
-          .map(column => (
-            <td key={column.field_key} className="p-2 border-b">
-              {formatFieldValue(task, column)}
-            </td>
-          ))}
-        
-        <td className="p-2 border-b">
-          {task.assigned_to ? task.assigned_to.split('@')[0] : '-'}
-        </td>
-        <td className="p-2 border-b">
-          {task.due_date ? format(new Date(task.due_date), 'MMM d') : '-'}
-        </td>
-        <td className="p-2 border-b">
-          <Button 
-            variant="ghost" 
-            size="sm"
-            className="h-7 w-7 p-0" 
-            onClick={() => editTask(task)}
+        {isExpanded && hasChildren && (
+          <div className="mt-3 pt-2 border-t space-y-2">
+            <h5 className="text-sm font-medium">Subtasks</h5>
+            <div className="space-y-2 pl-2 border-l-2 border-blue-100">
+              {childTasks.map((childTask) => (
+                <div key={childTask.id} className="pl-2">
+                  {renderTaskCard(childTask, false)}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+    
+    if (!isDraggable) {
+      return taskCard;
+    }
+    
+    return (
+      <Draggable key={task.id} draggableId={task.id} index={tasks.indexOf(task)}>
+        {(provided) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.draggableProps}
+            {...provided.dragHandleProps}
           >
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-        </td>
-      </tr>
+            {taskCard}
+          </div>
+        )}
+      </Draggable>
+    );
+  };
+
+  const renderBoardView = () => {
+    // If no custom status columns, use default
+    const columnsToUse = statusColumns.length > 0 ? statusColumns : [
+      { key: 'todo', title: 'To Do', color: 'gray' },
+      { key: 'in_progress', title: 'In Progress', color: 'blue' },
+      { key: 'review', title: 'Review', color: 'yellow' },
+      { key: 'done', title: 'Done', color: 'green' }
+    ];
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <DragDropContext onDragEnd={onDragEnd}>
+          {columnsToUse.map((column) => {
+            const bgColorClass = `bg-${column.color}-50`;
+
+            return (
+              <div 
+                key={column.key} 
+                className={`border rounded-md ${bgColorClass}`}
+              >
+                <div className="p-3 border-b flex justify-between items-center">
+                  <h3 className="font-medium">{column.title}</h3>
+                  <Badge variant="secondary" className="text-xs">
+                    {tasksByStatus[column.key]?.length || 0}
+                  </Badge>
+                </div>
+                
+                <Droppable droppableId={column.key}>
+                  {(provided) => (
+                    <div
+                      {...provided.droppableProps}
+                      ref={provided.innerRef}
+                      className="p-2 min-h-[300px]"
+                    >
+                      {(tasksByStatus[column.key] || [])
+                        .filter(task => !task.parent_task_id || task.hierarchy_level !== 'child')
+                        .map((task) => (
+                          <div key={task.id} className="mb-2">
+                            {renderTaskCard(task)}
+                          </div>
+                      ))}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </div>
+            );
+          })}
+        </DragDropContext>
+      </div>
+    );
+  };
+
+  const renderListView = () => {
+    const allVisibleTasks = Object.values(tasksByStatus).flat().filter(
+      task => !task.parent_task_id || task.hierarchy_level !== 'child'
+    );
+    
+    return (
+      <div className="border rounded-md">
+        <div className="p-4 space-y-2">
+          {allVisibleTasks.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No tasks match your filters
+            </div>
+          ) : (
+            allVisibleTasks.map(task => (
+              <div key={task.id} className="mb-2">
+                {renderTaskCard(task, false)}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     );
   };
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2">Tasks</CardTitle>
-        <div className="flex gap-2">
-          <Tabs defaultValue="board" value={viewMode} onValueChange={setViewMode} className="mr-4">
+        <CardTitle>Tasks</CardTitle>
+        <div className="flex items-center gap-2">
+          <Tabs 
+            value={viewMode} 
+            onValueChange={setViewMode}
+            className="mr-2"
+          >
             <TabsList>
               <TabsTrigger value="board">Board</TabsTrigger>
-              <TabsTrigger value="table">Table</TabsTrigger>
+              <TabsTrigger value="list">List</TabsTrigger>
             </TabsList>
           </Tabs>
-          
+
           <Button 
-            variant="outline"
-            onClick={() => setShowColumnManager(true)} 
+            variant="outline" 
+            onClick={() => setShowStatusColumnManager(true)}
             className="flex items-center gap-2"
           >
-            <Columns className="w-4 h-4" /> Manage Columns
+            <Columns className="w-4 h-4" />
+            <span className="hidden md:inline">Status Columns</span>
+          </Button>
+          
+          <Button 
+            variant="outline" 
+            onClick={() => setShowColumnManager(true)}
+            className="flex items-center gap-2"
+          >
+            <Settings className="w-4 h-4" />
+            <span className="hidden md:inline">Custom Fields</span>
           </Button>
           
           <Button onClick={() => setShowNewTask(true)} className="flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Add Task
+            <Plus className="w-4 h-4" />
+            <span>Add Task</span>
           </Button>
         </div>
       </CardHeader>
+      
       <CardContent>
-        {viewMode === 'board' ? (
-          <DragDropContext onDragEnd={onDragEnd}>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {Object.entries(DEFAULT_COLUMNS).map(([status, column]) => (
-                <Droppable key={status} droppableId={status}>
-                  {(provided) => (
-                    <div
-                      {...provided.droppableProps}
-                      ref={provided.innerRef}
-                      className={`rounded-lg p-4 ${column.color}`}
-                    >
-                      <h3 className="font-medium mb-4">{column.title}</h3>
-                      <div className="space-y-3">
-                        {tasks
-                          .filter(task => task.status === status)
-                          .map((task, index) => (
-                            <Draggable key={task.id} draggableId={task.id} index={index}>
-                              {(provided) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  {...provided.dragHandleProps}
-                                >
-                                  {renderTaskCard(task)}
-                                </div>
-                              )}
-                            </Draggable>
-                          ))}
-                        {provided.placeholder}
-                      </div>
-                    </div>
-                  )}
-                </Droppable>
-              ))}
-            </div>
-          </DragDropContext>
-        ) : (
-          <div className="overflow-x-auto rounded-md border">
-            <table className="min-w-full divide-y">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  
-                  {/* Custom column headers */}
-                  {columns
-                    .filter(col => col.is_visible)
-                    .map(column => (
-                      <th key={column.field_key} className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{column.title}</th>
-                    ))}
-                  
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assignee</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y">
-                {tasks.map(task => renderTaskInTable(task))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {renderFilters()}
+        
+        {viewMode === 'board' ? renderBoardView() : renderListView()}
+        
+        {/* New Task Dialog */}
+        <Dialog open={showNewTask} onOpenChange={setShowNewTask}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Create New Task</DialogTitle>
+            </DialogHeader>
+            <TaskForm
+              project={project}
+              tasks={tasks}
+              columns={columns}
+              teamMembers={teamMembers}
+              onSubmit={handleTaskCreate}
+              onCancel={() => setShowNewTask(false)}
+            />
+          </DialogContent>
+        </Dialog>
+        
+        {/* Edit Task Dialog */}
+        <Dialog open={showEditTask} onOpenChange={setShowEditTask}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Edit Task</DialogTitle>
+            </DialogHeader>
+            {selectedTask && (
+              <TaskForm
+                task={selectedTask}
+                tasks={tasks}
+                project={project}
+                columns={columns}
+                teamMembers={teamMembers}
+                onSubmit={handleTaskUpdate}
+                onCancel={() => setShowEditTask(false)}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Add Status Column Manager Dialog */}
+        <Dialog open={showStatusColumnManager} onOpenChange={setShowStatusColumnManager}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Manage Status Columns</DialogTitle>
+            </DialogHeader>
+            <StatusColumnManager
+              project={project}
+              statusColumns={statusColumns}
+              onStatusColumnsChange={loadStatusColumns}
+            />
+          </DialogContent>
+        </Dialog>
+        
+        {/* Column Manager Dialog */}
+        <Dialog open={showColumnManager} onOpenChange={setShowColumnManager}>
+          <DialogContent className="max-w-5xl max-h-[90vh]">
+            <DialogHeader>
+              <DialogTitle>Custom Fields</DialogTitle>
+            </DialogHeader>
+            <ScrollArea className="h-[500px]">
+              <ColumnManager
+                project={project}
+                columns={columns}
+                onColumnsChange={loadColumns}
+              />
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
       </CardContent>
-
-      {/* New Task Dialog */}
-      <Dialog open={showNewTask} onOpenChange={setShowNewTask}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create New Task</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto">
-            <Input
-              placeholder="Task Title"
-              value={newTask.title}
-              onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-            />
-            <Textarea
-              placeholder="Task Description"
-              value={newTask.description}
-              onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-            />
-            <div className="grid grid-cols-2 gap-4">
-              <Select
-                value={newTask.role}
-                onValueChange={(value) => setNewTask({ ...newTask, role: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="frontend">Frontend</SelectItem>
-                  <SelectItem value="backend">Backend</SelectItem>
-                  <SelectItem value="devops">DevOps</SelectItem>
-                  <SelectItem value="qa">QA</SelectItem>
-                  <SelectItem value="design">Design</SelectItem>
-                  <SelectItem value="product">Product</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select
-                value={newTask.priority}
-                onValueChange={(value) => setNewTask({ ...newTask, priority: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                type="email"
-                placeholder="Assignee Email"
-                value={newTask.assigned_to}
-                onChange={(e) => setNewTask({ ...newTask, assigned_to: e.target.value })}
-              />
-              <Input
-                type="date"
-                value={newTask.due_date}
-                onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })}
-              />
-            </div>
-
-            {/* Custom fields */}
-            {columns.length > 0 && (
-              <>
-                <div className="border-t pt-4 mt-4">
-                  <h3 className="text-lg font-medium mb-4">Custom Fields</h3>
-                  <div className="space-y-4">
-                    {columns.map(column => (
-                      <div key={column.id} className="space-y-2">
-                        <Label htmlFor={`custom-${column.field_key}`}>
-                          {column.title}
-                          {column.is_required && <span className="text-red-500">*</span>}
-                        </Label>
-
-                        {column.type === 'text' && (
-                          <Input 
-                            id={`custom-${column.field_key}`}
-                            value={newTask.custom_fields[column.field_key] || ''}
-                            onChange={(e) => handleCustomFieldChange(column.field_key, e.target.value)}
-                          />
-                        )}
-
-                        {column.type === 'number' && (
-                          <Input 
-                            id={`custom-${column.field_key}`}
-                            type="number"
-                            value={newTask.custom_fields[column.field_key] || ''}
-                            onChange={(e) => handleCustomFieldChange(column.field_key, 
-                              e.target.value === '' ? '' : Number(e.target.value)
-                            )}
-                          />
-                        )}
-
-                        {column.type === 'date' && (
-                          <Input 
-                            id={`custom-${column.field_key}`}
-                            type="date"
-                            value={newTask.custom_fields[column.field_key] || ''}
-                            onChange={(e) => handleCustomFieldChange(column.field_key, e.target.value)}
-                          />
-                        )}
-
-                        {column.type === 'select' && (
-                          <Select
-                            value={newTask.custom_fields[column.field_key] || ''}
-                            onValueChange={(value) => handleCustomFieldChange(column.field_key, value)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={`Select ${column.title}`} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {column.options?.map(option => (
-                                <SelectItem key={option} value={option}>
-                                  {option}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-
-                        {column.type === 'multiselect' && (
-                          <div className="flex flex-wrap gap-2 pt-1">
-                            {column.options?.map(option => {
-                              const selected = Array.isArray(newTask.custom_fields[column.field_key])
-                                ? newTask.custom_fields[column.field_key]?.includes(option)
-                                : false;
-
-                              return (
-                                <Badge 
-                                  key={option} 
-                                  variant={selected ? "default" : "outline"}
-                                  className="cursor-pointer"
-                                  onClick={() => {
-                                    const currentValues = Array.isArray(newTask.custom_fields[column.field_key])
-                                      ? [...newTask.custom_fields[column.field_key]]
-                                      : [];
-                                    
-                                    const newValues = selected
-                                      ? currentValues.filter(v => v !== option)
-                                      : [...currentValues, option];
-                                      
-                                    handleCustomFieldChange(column.field_key, newValues);
-                                  }}
-                                >
-                                  {option}
-                                </Badge>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {column.type === 'checkbox' && (
-                          <div className="flex items-center space-x-2">
-                            <Checkbox 
-                              id={`custom-${column.field_key}`}
-                              checked={!!newTask.custom_fields[column.field_key]}
-                              onCheckedChange={(checked) => 
-                                handleCustomFieldChange(column.field_key, checked)
-                              }
-                            />
-                            <label 
-                              htmlFor={`custom-${column.field_key}`}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                            >
-                              {column.title}
-                            </label>
-                          </div>
-                        )}
-
-                        {column.type === 'user' && (
-                          <Input 
-                            id={`custom-${column.field_key}`}
-                            type="email"
-                            placeholder="User email"
-                            value={newTask.custom_fields[column.field_key] || ''}
-                            onChange={(e) => handleCustomFieldChange(column.field_key, e.target.value)}
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewTask(false)}>Cancel</Button>
-            <Button onClick={createTask}>Create Task</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Task Dialog - Similar to New Task but for editing */}
-      <Dialog open={showEditTask} onOpenChange={setShowEditTask}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Task</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto">
-            <Input
-              placeholder="Task Title"
-              value={newTask.title}
-              onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-            />
-            <Textarea
-              placeholder="Task Description"
-              value={newTask.description}
-              onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-            />
-            <div className="grid grid-cols-2 gap-4">
-              <Select
-                value={newTask.role}
-                onValueChange={(value) => setNewTask({ ...newTask, role: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="frontend">Frontend</SelectItem>
-                  <SelectItem value="backend">Backend</SelectItem>
-                  <SelectItem value="devops">DevOps</SelectItem>
-                  <SelectItem value="qa">QA</SelectItem>
-                  <SelectItem value="design">Design</SelectItem>
-                  <SelectItem value="product">Product</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select
-                value={newTask.priority}
-                onValueChange={(value) => setNewTask({ ...newTask, priority: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                type="email"
-                placeholder="Assignee Email"
-                value={newTask.assigned_to}
-                onChange={(e) => setNewTask({ ...newTask, assigned_to: e.target.value })}
-              />
-              <Input
-                type="date"
-                value={newTask.due_date}
-                onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })}
-              />
-            </div>
-
-            {/* Custom fields - same as in New Task dialog */}
-            {columns.length > 0 && (
-              <>
-                <div className="border-t pt-4 mt-4">
-                  <h3 className="text-lg font-medium mb-4">Custom Fields</h3>
-                  <div className="space-y-4">
-                    {columns.map(column => (
-                      <div key={column.id} className="space-y-2">
-                        <Label htmlFor={`edit-custom-${column.field_key}`}>
-                          {column.title}
-                          {column.is_required && <span className="text-red-500">*</span>}
-                        </Label>
-
-                        {column.type === 'text' && (
-                          <Input 
-                            id={`edit-custom-${column.field_key}`}
-                            value={newTask.custom_fields[column.field_key] || ''}
-                            onChange={(e) => handleCustomFieldChange(column.field_key, e.target.value)}
-                          />
-                        )}
-
-                        {column.type === 'number' && (
-                          <Input 
-                            id={`edit-custom-${column.field_key}`}
-                            type="number"
-                            value={newTask.custom_fields[column.field_key] || ''}
-                            onChange={(e) => handleCustomFieldChange(column.field_key, 
-                              e.target.value === '' ? '' : Number(e.target.value)
-                            )}
-                          />
-                        )}
-
-                        {column.type === 'date' && (
-                          <Input 
-                            id={`edit-custom-${column.field_key}`}
-                            type="date"
-                            value={newTask.custom_fields[column.field_key] || ''}
-                            onChange={(e) => handleCustomFieldChange(column.field_key, e.target.value)}
-                          />
-                        )}
-
-                        {column.type === 'select' && (
-                          <Select
-                            value={newTask.custom_fields[column.field_key] || ''}
-                            onValueChange={(value) => handleCustomFieldChange(column.field_key, value)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={`Select ${column.title}`} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {column.options?.map(option => (
-                                <SelectItem key={option} value={option}>
-                                  {option}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-
-                        {column.type === 'multiselect' && (
-                          <div className="flex flex-wrap gap-2 pt-1">
-                            {column.options?.map(option => {
-                              const selected = Array.isArray(newTask.custom_fields[column.field_key])
-                                ? newTask.custom_fields[column.field_key]?.includes(option)
-                                : false;
-
-                              return (
-                                <Badge 
-                                  key={option} 
-                                  variant={selected ? "default" : "outline"}
-                                  className="cursor-pointer"
-                                  onClick={() => {
-                                    const currentValues = Array.isArray(newTask.custom_fields[column.field_key])
-                                      ? [...newTask.custom_fields[column.field_key]]
-                                      : [];
-                                    
-                                    const newValues = selected
-                                      ? currentValues.filter(v => v !== option)
-                                      : [...currentValues, option];
-                                      
-                                    handleCustomFieldChange(column.field_key, newValues);
-                                  }}
-                                >
-                                  {option}
-                                </Badge>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {column.type === 'checkbox' && (
-                          <div className="flex items-center space-x-2">
-                            <Checkbox 
-                              id={`edit-custom-${column.field_key}`}
-                              checked={!!newTask.custom_fields[column.field_key]}
-                              onCheckedChange={(checked) => 
-                                handleCustomFieldChange(column.field_key, checked)
-                              }
-                            />
-                            <label 
-                              htmlFor={`edit-custom-${column.field_key}`}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                            >
-                              {column.title}
-                            </label>
-                          </div>
-                        )}
-
-                        {column.type === 'user' && (
-                          <Input 
-                            id={`edit-custom-${column.field_key}`}
-                            type="email"
-                            placeholder="User email"
-                            value={newTask.custom_fields[column.field_key] || ''}
-                            onChange={(e) => handleCustomFieldChange(column.field_key, e.target.value)}
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditTask(false)}>Cancel</Button>
-            <Button onClick={updateTask}>Update Task</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Column Manager Dialog */}
-      <Dialog open={showColumnManager} onOpenChange={setShowColumnManager}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>Manage Custom Columns</span>
-              <Button onClick={() => setShowAddColumn(true)}>
-                <Plus className="w-4 h-4 mr-2" /> Add Column
-              </Button>
-            </DialogTitle>
-          </DialogHeader>
-          <div className="my-4">
-            {columns.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No custom columns defined. Click "Add Column" to create one.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {columns.map(column => (
-                  <div 
-                    key={column.id}
-                    className="flex items-center justify-between p-4 border rounded-md"
-                  >
-                    <div className="flex items-center gap-3">
-                      <MoveVertical className="w-4 h-4 text-gray-400" />
-                      <div>
-                        <div className="font-medium">{column.title}</div>
-                        <div className="text-sm text-gray-500">
-                          <span className="uppercase text-xs bg-gray-100 px-2 py-0.5 rounded mr-2">
-                            {column.type}
-                          </span>
-                          {column.field_key}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500 mr-1">Visible</span>
-                        <Switch 
-                          checked={column.is_visible}
-                          onCheckedChange={async (checked) => {
-                            await TaskColumn.update(column.id, { is_visible: checked });
-                            loadColumns();
-                          }}
-                        />
-                      </div>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => {
-                          setEditingColumn(column);
-                          setNewColumn({
-                            ...column,
-                            project_id: project.id
-                          });
-                          setShowEditColumn(true);
-                        }}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8 text-red-500 hover:text-red-600"
-                        onClick={() => deleteColumn(column.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setShowColumnManager(false)}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Column Dialog */}
-      <Dialog open={showAddColumn} onOpenChange={setShowAddColumn}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Custom Column</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="column-title">Column Title</Label>
-              <Input
-                id="column-title"
-                placeholder="e.g. Story Points, Client, Environment"
-                value={newColumn.title}
-                onChange={(e) => setNewColumn({ 
-                  ...newColumn, 
-                  title: e.target.value,
-                  field_key: e.target.value
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]/g, '_')
-                    .replace(/_+/g, '_')
-                    .replace(/^_|_$/g, '')
-                })}
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="column-key">Field Key (System Identifier)</Label>
-              <Input
-                id="column-key"
-                placeholder="e.g. story_points"
-                value={newColumn.field_key}
-                onChange={(e) => setNewColumn({ 
-                  ...newColumn, 
-                  field_key: e.target.value
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]/g, '_')
-                    .replace(/_+/g, '_')
-                    .replace(/^_|_$/g, '')
-                })}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                A unique identifier used by the system. Use lowercase letters, numbers, and underscores.
-              </p>
-            </div>
-            
-            <div>
-              <Label htmlFor="column-type">Field Type</Label>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
-                {FIELD_TYPE_OPTIONS.map(option => (
-                  <div
-                    key={option.value}
-                    className={`border rounded-md p-3 cursor-pointer flex items-center gap-2 ${
-                      newColumn.type === option.value
-                        ? 'border-primary bg-primary/5'
-                        : 'hover:border-gray-300'
-                    }`}
-                    onClick={() => {
-                      setNewColumn({ 
-                        ...newColumn, 
-                        type: option.value,
-                        // Reset options when switching away from select types
-                        options: option.value === 'select' || option.value === 'multiselect' 
-                          ? newColumn.options 
-                          : []
-                      });
-                    }}
-                  >
-                    <option.icon className="w-4 h-4 text-gray-500" />
-                    <span>{option.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            {/* Options for select and multiselect */}
-            {(newColumn.type === 'select' || newColumn.type === 'multiselect') && (
-              <div>
-                <Label>Options</Label>
-                <div className="mt-2 space-y-4">
-                  {/* Display current options */}
-                  <div className="flex flex-wrap gap-2">
-                    {newColumn.options.map(option => (
-                      <Badge key={option} className="flex items-center gap-1">
-                        {option}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-4 w-4 p-0 text-white"
-                          onClick={() => removeOption(option)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </Badge>
-                    ))}
-                  </div>
-                  
-                  {/* Add option input */}
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Add an option..."
-                      value={newOptionText}
-                      onChange={(e) => setNewOptionText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && newOptionText.trim()) {
-                          e.preventDefault();
-                          addOption();
-                        }
-                      }}
-                    />
-                    <Button onClick={addOption} disabled={!newOptionText.trim()}>
-                      Add
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Default value */}
-            {newColumn.type === 'text' && (
-              <div>
-                <Label htmlFor="column-default">Default Value (optional)</Label>
-                <Input
-                  id="column-default"
-                  value={newColumn.default_value}
-                  onChange={(e) => setNewColumn({ ...newColumn, default_value: e.target.value })}
-                />
-              </div>
-            )}
-            
-            {(newColumn.type === 'select' && newColumn.options.length > 0) && (
-              <div>
-                <Label htmlFor="column-default">Default Value (optional)</Label>
-                <Select
-                  value={newColumn.default_value}
-                  onValueChange={(value) => setNewColumn({ ...newColumn, default_value: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a default value" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={null}>No default</SelectItem>
-                    {newColumn.options.map(option => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="column-required"
-                checked={newColumn.is_required}
-                onCheckedChange={(checked) => 
-                  setNewColumn({ ...newColumn, is_required: !!checked })
-                }
-              />
-              <Label htmlFor="column-required">Required field</Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddColumn(false)}>Cancel</Button>
-            <Button onClick={createColumn}>Create Column</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Column Dialog - Similar to Add Column */}
-      <Dialog open={showEditColumn} onOpenChange={setShowEditColumn}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Custom Column</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="edit-column-title">Column Title</Label>
-              <Input
-                id="edit-column-title"
-                placeholder="e.g. Story Points, Client, Environment"
-                value={newColumn.title}
-                onChange={(e) => setNewColumn({ ...newColumn, title: e.target.value })}
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="edit-column-key">Field Key (System Identifier)</Label>
-              <Input
-                id="edit-column-key"
-                placeholder="e.g. story_points"
-                value={newColumn.field_key}
-                disabled
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Field key cannot be changed after creation.
-              </p>
-            </div>
-            
-            {/* Type is shown but disabled to prevent data inconsistencies */}
-            <div>
-              <Label htmlFor="edit-column-type">Field Type</Label>
-              <Select value={newColumn.type} disabled>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FIELD_TYPE_OPTIONS.map(option => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-500 mt-1">
-                Field type cannot be changed after creation.
-              </p>
-            </div>
-            
-            {/* Options for select and multiselect - same as Add Column */}
-            {(newColumn.type === 'select' || newColumn.type === 'multiselect') && (
-              <div>
-                <Label>Options</Label>
-                <div className="mt-2 space-y-4">
-                  {/* Display current options */}
-                  <div className="flex flex-wrap gap-2">
-                    {newColumn.options.map(option => (
-                      <Badge key={option} className="flex items-center gap-1">
-                        {option}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-4 w-4 p-0 text-white"
-                          onClick={() => removeOption(option)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </Badge>
-                    ))}
-                  </div>
-                  
-                  {/* Add option input */}
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Add an option..."
-                      value={newOptionText}
-                      onChange={(e) => setNewOptionText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && newOptionText.trim()) {
-                          e.preventDefault();
-                          addOption();
-                        }
-                      }}
-                    />
-                    <Button onClick={addOption} disabled={!newOptionText.trim()}>
-                      Add
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Default value - same as Add Column */}
-            {newColumn.type === 'text' && (
-              <div>
-                <Label htmlFor="edit-column-default">Default Value (optional)</Label>
-                <Input
-                  id="edit-column-default"
-                  value={newColumn.default_value}
-                  onChange={(e) => setNewColumn({ ...newColumn, default_value: e.target.value })}
-                />
-              </div>
-            )}
-            
-            {(newColumn.type === 'select' && newColumn.options.length > 0) && (
-              <div>
-                <Label htmlFor="edit-column-default">Default Value (optional)</Label>
-                <Select
-                  value={newColumn.default_value}
-                  onValueChange={(value) => setNewColumn({ ...newColumn, default_value: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a default value" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={null}>No default</SelectItem>
-                    {newColumn.options.map(option => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="edit-column-required"
-                checked={newColumn.is_required}
-                onCheckedChange={(checked) => 
-                  setNewColumn({ ...newColumn, is_required: !!checked })
-                }
-              />
-              <Label htmlFor="edit-column-required">Required field</Label>
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="edit-column-visible"
-                checked={newColumn.is_visible}
-                onCheckedChange={(checked) => 
-                  setNewColumn({ ...newColumn, is_visible: !!checked })
-                }
-              />
-              <Label htmlFor="edit-column-visible">Visible in cards and tables</Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditColumn(false)}>Cancel</Button>
-            <Button onClick={updateColumn}>Update Column</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }
