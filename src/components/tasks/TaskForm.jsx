@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Task, TaskColumn, TeamMember } from '@/api/entities';
+import { Task, TaskColumn, TeamMember, Project } from '@/api/entities';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Plus, Users, X } from 'lucide-react';
+import { Calendar as CalendarIcon, Plus, Users, X, Search, Check } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Calendar } from '@/components/ui/calendar';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 export default function TaskForm({ 
   task, 
@@ -21,53 +21,59 @@ export default function TaskForm({
   columns, 
   teamMembers = [], 
   onSubmit, 
-  onCancel
+  onCancel,
+  projects = [],
+  initialStatus
 }) {
   const [customFields, setCustomFields] = useState({});
   const [currentTask, setCurrentTask] = useState({
-    project_id: project?.id,
     title: '',
     description: '',
     role: 'other',
-    status: 'todo',
+    status: initialStatus || 'todo',
     priority: 'medium',
     parent_task_id: null,
     hierarchy_level: 'parent',
     due_date: '',
     assigned_to: '',
-    custom_fields: {}
+    custom_fields: {},
+    project_id: project?.id || null
   });
   const [assigneeSearch, setAssigneeSearch] = useState('');
   const [showTaskPicker, setShowTaskPicker] = useState(false);
   const [selectedParentTask, setSelectedParentTask] = useState(null);
   const [hierarchyRelation, setHierarchyRelation] = useState('child');
+  const [selectedProject, setSelectedProject] = useState(project?.id || null);
+  const [assigneePopoverOpen, setAssigneePopoverOpen] = useState(false);
 
   useEffect(() => {
     if (task) {
       setCurrentTask({
         ...task,
-        project_id: project?.id,
+        project_id: task.project_id || null
       });
+      setSelectedProject(task.project_id || null);
       if (task.parent_task_id) {
         const parentTask = tasks.find(t => t.id === task.parent_task_id);
         setSelectedParentTask(parentTask);
       }
     } else {
       setCurrentTask({
-        project_id: project?.id,
         title: '',
         description: '',
         role: 'other',
-        status: 'todo',
+        status: initialStatus || 'todo',
         priority: 'medium',
         parent_task_id: null,
         hierarchy_level: 'parent',
         due_date: '',
         assigned_to: '',
-        custom_fields: {}
+        custom_fields: {},
+        project_id: project?.id || null
       });
+      setSelectedProject(project?.id || null);
     }
-  }, [task, project]);
+  }, [task, project, initialStatus]);
 
   useEffect(() => {
     // Set up custom fields based on columns
@@ -112,218 +118,104 @@ export default function TaskForm({
     // Apply parent task relationship if selected
     let taskToSubmit = { ...currentTask };
     
-    if (selectedParentTask && hierarchyRelation !== 'none') {
-      taskToSubmit = {
-        ...taskToSubmit,
-        parent_task_id: selectedParentTask.id,
-        hierarchy_level: hierarchyRelation
-      };
+    if (selectedParentTask) {
+      taskToSubmit.parent_task_id = selectedParentTask.id;
+      taskToSubmit.hierarchy_level = hierarchyRelation;
     } else {
-      taskToSubmit = {
-        ...taskToSubmit,
-        parent_task_id: null,
-        hierarchy_level: 'parent'
-      };
+      taskToSubmit.parent_task_id = null;
+      taskToSubmit.hierarchy_level = 'parent';
     }
+    
+    // Apply project selection
+    taskToSubmit.project_id = selectedProject;
     
     onSubmit(taskToSubmit);
   };
 
-  const getFieldComponent = (column) => {
-    const value = customFields[column.field_key] || '';
-    
-    switch (column.type) {
-      case 'text':
-        return (
-          <Input
-            value={value}
-            onChange={(e) => handleCustomFieldChange(column.field_key, e.target.value)}
-            placeholder={column.title}
-          />
-        );
-      case 'number':
-        return (
-          <Input
-            type="number"
-            value={value}
-            onChange={(e) => handleCustomFieldChange(column.field_key, parseInt(e.target.value) || '')}
-            placeholder={column.title}
-          />
-        );
-      case 'date':
-        return (
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="w-full justify-start text-left">
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {value ? format(new Date(value), 'PPP') : `Select ${column.title}`}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
-              <Calendar
-                mode="single"
-                selected={value ? new Date(value) : undefined}
-                onSelect={(date) => handleCustomFieldChange(column.field_key, date)}
-              />
-            </PopoverContent>
-          </Popover>
-        );
-      case 'select':
-        return (
-          <Select
-            value={value}
-            onValueChange={(val) => handleCustomFieldChange(column.field_key, val)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder={column.title} />
-            </SelectTrigger>
-            <SelectContent>
-              {column.options?.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        );
-      case 'multiselect':
-        const selectedValues = Array.isArray(value) ? value : [];
-        return (
-          <div className="space-y-2">
-            <div className="flex flex-wrap gap-1">
-              {selectedValues.map((selected) => (
-                <Badge key={selected} className="flex items-center gap-1">
-                  {selected}
-                  <button 
-                    onClick={() => {
-                      const newValues = selectedValues.filter(v => v !== selected);
-                      handleCustomFieldChange(column.field_key, newValues);
-                    }}
-                    className="ml-1 rounded-full hover:bg-primary/20"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-            <Select
-              value=""
-              onValueChange={(val) => {
-                if (!selectedValues.includes(val)) {
-                  handleCustomFieldChange(column.field_key, [...selectedValues, val]);
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={`Select ${column.title}`} />
-              </SelectTrigger>
-              <SelectContent>
-                {column.options?.filter(option => !selectedValues.includes(option)).map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        );
-      case 'checkbox':
-        return (
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id={column.field_key}
-              checked={!!value}
-              onCheckedChange={(checked) => handleCustomFieldChange(column.field_key, checked)}
-            />
-            <Label htmlFor={column.field_key}>{column.title}</Label>
-          </div>
-        );
-      case 'user':
-        return (
-          <div className="space-y-2">
-            {value && (
-              <Badge className="flex items-center gap-1">
-                {value}
-                <button 
-                  onClick={() => handleCustomFieldChange(column.field_key, '')}
-                  className="ml-1 rounded-full hover:bg-primary/20"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
-            <Select
-              value={value || ""}
-              onValueChange={(val) => handleCustomFieldChange(column.field_key, val)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={`Select ${column.title}`} />
-              </SelectTrigger>
-              <SelectContent>
-                {teamMembers.map((member) => (
-                  <SelectItem key={member.email} value={member.email}>
-                    {member.email}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        );
-      default:
-        return <Input value={value} onChange={(e) => handleCustomFieldChange(column.field_key, e.target.value)} />;
-    }
+  // Get filtered team members based on project selection
+  const getFilteredTeamMembers = () => {
+    if (!selectedProject) return teamMembers;
+    return teamMembers.filter(member => 
+      member.projects?.includes(selectedProject) || 
+      !member.projects || 
+      member.projects.length === 0
+    );
   };
 
-  const filteredTeamMembers = teamMembers.filter(
-    member => member.email.toLowerCase().includes(assigneeSearch.toLowerCase())
+  const filteredTeamMembers = getFilteredTeamMembers();
+  
+  const filteredAssigneeSuggestions = filteredTeamMembers.filter(member => 
+    member.email.toLowerCase().includes(assigneeSearch.toLowerCase())
   );
-
-  // Filter tasks to exclude current task when selecting parent
-  const availableTasks = tasks.filter(t => !task || t.id !== task.id);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <Input
-        placeholder="Task Title"
+        placeholder="Task title"
         value={currentTask.title}
         onChange={(e) => handleChange('title', e.target.value)}
         className="text-lg font-medium"
+        required
       />
       
+      <div>
+        <label className="text-sm font-medium mb-2 block">Project (Optional)</label>
+        <Select
+          value={selectedProject || ''}
+          onValueChange={(value) => {
+            setSelectedProject(value || null);
+            handleChange('project_id', value || null);
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="No Project" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={null}>No Project</SelectItem>
+            {projects.map(proj => (
+              <SelectItem key={proj.id} value={proj.id}>
+                {proj.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      
       <Textarea
-        placeholder="Task Description"
-        value={currentTask.description}
+        placeholder="Task description"
+        value={currentTask.description || ''}
         onChange={(e) => handleChange('description', e.target.value)}
         className="min-h-[100px]"
       />
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <Label>Status</Label>
+          <label className="text-sm font-medium mb-2 block">Status</label>
           <Select
             value={currentTask.status}
             onValueChange={(value) => handleChange('status', value)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Status" />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todo">To Do</SelectItem>
               <SelectItem value="in_progress">In Progress</SelectItem>
               <SelectItem value="review">Review</SelectItem>
               <SelectItem value="done">Done</SelectItem>
+              <SelectItem value="uncategorized">Uncategorized</SelectItem>
             </SelectContent>
           </Select>
         </div>
         
         <div>
-          <Label>Priority</Label>
+          <label className="text-sm font-medium mb-2 block">Priority</label>
           <Select
             value={currentTask.priority}
             onValueChange={(value) => handleChange('priority', value)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Priority" />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="low">Low</SelectItem>
@@ -333,15 +225,17 @@ export default function TaskForm({
             </SelectContent>
           </Select>
         </div>
-        
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <Label>Role</Label>
+          <label className="text-sm font-medium mb-2 block">Role</label>
           <Select
             value={currentTask.role}
             onValueChange={(value) => handleChange('role', value)}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Role" />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="frontend">Frontend</SelectItem>
@@ -356,73 +250,206 @@ export default function TaskForm({
         </div>
         
         <div>
-          <Label>Due Date</Label>
+          <label className="text-sm font-medium mb-2 block">Due Date</label>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="w-full justify-start text-left">
+              <Button
+                variant="outline"
+                className="w-full justify-start text-left font-normal"
+              >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {currentTask.due_date ? format(new Date(currentTask.due_date), 'PPP') : 'Set due date'}
+                {currentTask.due_date ? (
+                  format(new Date(currentTask.due_date), 'PPP')
+                ) : (
+                  <span>Pick a date</span>
+                )}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
               <Calendar
                 mode="single"
                 selected={currentTask.due_date ? new Date(currentTask.due_date) : undefined}
-                onSelect={(date) => handleChange('due_date', date)}
+                onSelect={(date) => handleChange('due_date', date ? format(date, 'yyyy-MM-dd') : '')}
               />
             </PopoverContent>
           </Popover>
         </div>
-        
-        <div>
-          <Label>Assigned To</Label>
-          <Select
-            value={currentTask.assigned_to}
-            onValueChange={(value) => handleChange('assigned_to', value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Assign to team member" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={null}>Unassigned</SelectItem>
-              {teamMembers.map((member) => (
-                <SelectItem key={member.email} value={member.email}>
-                  {member.email}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <div>
-          <Label>Task Hierarchy</Label>
+      </div>
+
+      <div>
+        <label className="text-sm font-medium mb-2 block">Assignee</label>
+        <Popover open={assigneePopoverOpen} onOpenChange={setAssigneePopoverOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-full justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                {currentTask.assigned_to || "Select Assignee"}
+              </div>
+              <div className="opacity-50">⌄</div>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-full p-0" align="start">
+            <Command>
+              <CommandInput 
+                placeholder="Search assignees..."
+                value={assigneeSearch}
+                onValueChange={setAssigneeSearch}
+              />
+              <CommandList>
+                <CommandEmpty>No results found.</CommandEmpty>
+                <CommandGroup heading="Assignees">
+                  <CommandItem
+                    key="unassigned"
+                    onSelect={() => {
+                      handleChange('assigned_to', '');
+                      setAssigneeSearch('');
+                      setAssigneePopoverOpen(false);
+                    }}
+                    className="flex items-center justify-between"
+                  >
+                    <span>Unassigned</span>
+                    {!currentTask.assigned_to && <Check className="h-4 w-4" />}
+                  </CommandItem>
+                  {filteredAssigneeSuggestions.map((member) => (
+                    <CommandItem
+                      key={member.id}
+                      onSelect={() => {
+                        handleChange('assigned_to', member.email);
+                        setAssigneeSearch('');
+                        setAssigneePopoverOpen(false);
+                      }}
+                      className="flex items-center justify-between"
+                    >
+                      <div>
+                        <span>{member.email}</span>
+                        <span className="ml-2 text-xs text-gray-500">
+                          {member.role.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      {currentTask.assigned_to === member.email && (
+                        <Check className="h-4 w-4" />
+                      )}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium">Parent Task</label>
           <Button
             type="button"
             variant="outline"
-            className="w-full flex justify-between items-center"
+            size="sm"
             onClick={() => setShowTaskPicker(true)}
           >
-            <span>
-              {selectedParentTask ? `${hierarchyRelation === 'child' ? 'Subtask of' : hierarchyRelation === 'sibling' ? 'Sibling of' : ''} ${selectedParentTask.title}` : 'No parent task (standalone)'}
-            </span>
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4 mr-1" /> Select Parent
           </Button>
         </div>
+        
+        {selectedParentTask ? (
+          <div className="flex items-start gap-2 p-2 border rounded-md">
+            <div className="flex-1">
+              <div className="font-medium">{selectedParentTask.title}</div>
+              <div className="flex gap-2 mt-1">
+                <Badge variant="outline">{selectedParentTask.status}</Badge>
+                <Badge variant="outline">{selectedParentTask.priority}</Badge>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSelectedParentTask(null);
+                handleChange('parent_task_id', null);
+              }}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="text-sm text-gray-500 p-2 border border-dashed rounded-md">
+            No parent task selected
+          </div>
+        )}
+        
+        {selectedParentTask && (
+          <div className="mt-2">
+            <label className="text-sm font-medium mb-1 block">Relationship</label>
+            <Select
+              value={hierarchyRelation}
+              onValueChange={setHierarchyRelation}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="child">Child (subtask of parent)</SelectItem>
+                <SelectItem value="sibling">Sibling (same level as parent)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
       
-      {/* Custom Fields Section */}
+      {/* Custom fields based on project configuration */}
       {columns?.length > 0 && (
-        <div className="space-y-4 border-t pt-4">
-          <h3 className="font-medium">Custom Fields</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <>
+          <h3 className="text-sm font-medium">Custom Fields</h3>
+          <div className="space-y-3">
             {columns.map(column => (
               <div key={column.field_key}>
-                <Label>{column.title}</Label>
-                {getFieldComponent(column)}
+                <Label htmlFor={column.field_key}>{column.title}</Label>
+                
+                {column.type === 'text' && (
+                  <Input
+                    id={column.field_key}
+                    value={customFields[column.field_key] || ''}
+                    onChange={(e) => handleCustomFieldChange(column.field_key, e.target.value)}
+                    required={column.is_required}
+                  />
+                )}
+                
+                {column.type === 'select' && (
+                  <Select
+                    value={customFields[column.field_key] || ''}
+                    onValueChange={(value) => handleCustomFieldChange(column.field_key, value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={`Select ${column.title}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {column.options?.map(option => (
+                        <SelectItem key={option} value={option}>{option}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                
+                {column.type === 'checkbox' && (
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id={column.field_key}
+                      checked={!!customFields[column.field_key]}
+                      onCheckedChange={(checked) => handleCustomFieldChange(column.field_key, checked)}
+                    />
+                    <label htmlFor={column.field_key} className="text-sm cursor-pointer">
+                      Enabled
+                    </label>
+                  </div>
+                )}
               </div>
             ))}
           </div>
-        </div>
+        </>
       )}
       
       <div className="flex justify-end gap-2">
@@ -430,101 +457,9 @@ export default function TaskForm({
           Cancel
         </Button>
         <Button type="submit">
-          {task ? 'Save Changes' : 'Create Task'}
+          {task ? 'Update Task' : 'Create Task'}
         </Button>
       </div>
-      
-      {/* Task Hierarchy Picker Dialog */}
-      <Dialog open={showTaskPicker} onOpenChange={setShowTaskPicker}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Select Related Task</DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <Select
-              value={hierarchyRelation}
-              onValueChange={setHierarchyRelation}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Relationship Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No Relationship</SelectItem>
-                <SelectItem value="child">Subtask (Child)</SelectItem>
-                <SelectItem value="sibling">Sibling Task</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            {hierarchyRelation !== 'none' && (
-              <>
-                <Input
-                  placeholder="Search tasks..."
-                  onChange={(e) => setAssigneeSearch(e.target.value)}
-                />
-                
-                <ScrollArea className="h-[200px]">
-                  {availableTasks.length === 0 ? (
-                    <p className="text-center py-4 text-gray-500">No tasks available</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {availableTasks
-                        .filter(t => 
-                          t.title.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
-                          t.description?.toLowerCase().includes(assigneeSearch.toLowerCase())
-                        )
-                        .map(t => (
-                          <div
-                            key={t.id}
-                            className={`p-2 border rounded cursor-pointer hover:bg-gray-50 ${
-                              selectedParentTask?.id === t.id ? 'border-primary bg-primary/5' : ''
-                            }`}
-                            onClick={() => setSelectedParentTask(t)}
-                          >
-                            <div className="font-medium">{t.title}</div>
-                            {t.description && (
-                              <div className="text-sm text-gray-500 truncate">{t.description}</div>
-                            )}
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </ScrollArea>
-              </>
-            )}
-          </div>
-          
-          <DialogFooter>
-            {hierarchyRelation !== 'none' && selectedParentTask && (
-              <Button
-                type="button"
-                variant="ghost"
-                className="mr-auto"
-                onClick={() => {
-                  setSelectedParentTask(null);
-                  setHierarchyRelation('none');
-                }}
-              >
-                Clear Selection
-              </Button>
-            )}
-            <Button type="button" variant="outline" onClick={() => setShowTaskPicker(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                if (hierarchyRelation === 'none') {
-                  setSelectedParentTask(null);
-                }
-                setShowTaskPicker(false);
-              }}
-            >
-              Confirm
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </form>
   );
 }

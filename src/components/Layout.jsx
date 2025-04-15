@@ -1,8 +1,8 @@
-
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
+import { User } from '@/api/entities';
 import {
   Home,
   Briefcase,
@@ -21,7 +21,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { User } from '@/api/entities';
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -53,20 +52,14 @@ export default function Layout({ children }) {
     return location.pathname.includes(path);
   };
 
-  const navigationItems = [
-    { path: 'Navigation', icon: Home, label: 'Home' },
-    { path: 'Dashboard', icon: BarChart2, label: 'Dashboard' },
-    { path: 'ProjectDashboard', icon: Briefcase, label: 'Projects' },
-    { path: 'TaskManager', icon: ClipboardList, label: 'Tasks' },
-    { path: 'TeamManagement', icon: Users, label: 'Team' }
-  ];
-
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
+      {/* Header */}
       <header className="bg-white border-b py-2 px-4 sticky top-0 z-10">
         <div className="max-w-[1800px] mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-1">
-            {location.pathname !== '/Navigation' && (
+            {/* Back button - shows on all pages except dashboard */}
+            {location.pathname !== '/Dashboard' && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -77,24 +70,54 @@ export default function Layout({ children }) {
               </Button>
             )}
             
-            <Link to={createPageUrl('Navigation')} className="flex items-center px-2">
+            <Link to={createPageUrl('Dashboard')} className="flex items-center px-2">
               <span className="font-semibold text-lg text-indigo-600">Synapse</span>
             </Link>
             
             <div className="hidden md:flex space-x-1 ml-4">
-              {navigationItems.map(item => (
-                <Button 
-                  key={item.path}
-                  variant={isActive(item.path) ? "secondary" : "ghost"} 
-                  size="sm" 
-                  asChild
-                >
-                  <Link to={createPageUrl(item.path)}>
-                    <item.icon className="h-4 w-4 mr-1" />
-                    {item.label}
-                  </Link>
-                </Button>
-              ))}
+              <Button 
+                variant={isActive('Dashboard') ? "secondary" : "ghost"} 
+                size="sm" 
+                asChild
+              >
+                <Link to={createPageUrl('Dashboard')}>
+                  <Home className="h-4 w-4 mr-1" />
+                  Dashboard
+                </Link>
+              </Button>
+              
+              <Button 
+                variant={isActive('ProjectDashboard') ? "secondary" : "ghost"} 
+                size="sm" 
+                asChild
+              >
+                <Link to={createPageUrl('ProjectDashboard')}>
+                  <Briefcase className="h-4 w-4 mr-1" />
+                  Projects
+                </Link>
+              </Button>
+              
+              <Button 
+                variant={isActive('TaskManager') ? "secondary" : "ghost"} 
+                size="sm" 
+                asChild
+              >
+                <Link to={createPageUrl('TaskManager')}>
+                  <ClipboardList className="h-4 w-4 mr-1" />
+                  Tasks
+                </Link>
+              </Button>
+              
+              <Button 
+                variant={isActive('TeamCalendar') ? "secondary" : "ghost"} 
+                size="sm" 
+                asChild
+              >
+                <Link to={createPageUrl('TeamCalendar')}>
+                  <Users className="h-4 w-4 mr-1" />
+                  Team
+                </Link>
+              </Button>
             </div>
           </div>
           
@@ -119,9 +142,34 @@ export default function Layout({ children }) {
                     <div className="text-xs text-gray-500">{currentUser.email}</div>
                   </div>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to={createPageUrl('Dashboard')}>
+                      <Home className="mr-2 h-4 w-4" />
+                      <span>Dashboard</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to={createPageUrl('ProjectDashboard')}>
+                      <Briefcase className="mr-2 h-4 w-4" />
+                      <span>Projects</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to={createPageUrl('TaskManager')}>
+                      <ClipboardList className="mr-2 h-4 w-4" />
+                      <span>Tasks</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to={createPageUrl('TeamCalendar')}>
+                      <Users className="mr-2 h-4 w-4" />
+                      <span>Team</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" />
-                    Logout
+                    <span>Logout</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -130,10 +178,12 @@ export default function Layout({ children }) {
         </div>
       </header>
 
+      {/* Main content */}
       <main className="flex-1">
         {children}
       </main>
 
+      {/* Footer */}
       <footer className="py-2 px-4 bg-white border-t text-xs text-gray-500 flex justify-between">
         <div>Synapse Project Manager v1.0</div>
         <div>© 2023 Synapse</div>

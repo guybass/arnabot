@@ -1,23 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { Project, Task, TaskColumn, StatusColumn, TaskDependency, TeamMember, User } from '@/api/entities';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { 
   Tabs, 
   TabsList, 
   TabsTrigger, 
   TabsContent 
 } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import TaskBoard from '../components/tasks/TaskBoard';
 import TaskTimeline from '../components/tasks/TaskTimeline';
 import TaskCalendar from '../components/tasks/TaskCalendar';
 import TaskReports from '../components/tasks/TaskReports';
 import TaskConfiguration from '../components/tasks/TaskConfiguration';
-import TaskManagerHeader from '../components/tasks/TaskManagerHeader';
 import TaskManagerSidebar from '../components/tasks/TaskManagerSidebar';
 import { Loader2 } from 'lucide-react';
 
 export default function TaskManager() {
-  const { projectId } = useParams();
+  const [searchParams] = useSearchParams();
+  const projectId = searchParams.get('projectId');
   const [selectedProject, setSelectedProject] = useState(null);
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -152,13 +153,6 @@ export default function TaskManager() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      <TaskManagerHeader 
-        currentUser={currentUser}
-        notifications={notifications}
-        toggleSidebar={toggleSidebar}
-        project={selectedProject}
-      />
-      
       <div className="flex flex-1 overflow-hidden">
         {isSidebarOpen && (
           <TaskManagerSidebar 
@@ -170,10 +164,24 @@ export default function TaskManager() {
             onSearch={handleSearch}
             filters={filter}
             onFilterChange={handleFilterChange}
+            currentUser={currentUser}
+            notifications={notifications}
+            toggleSidebar={toggleSidebar}
           />
         )}
         
         <main className="flex-1 overflow-auto p-4">
+          {!isSidebarOpen && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={toggleSidebar}
+              className="mb-4"
+            >
+              Show Sidebar
+            </Button>
+          )}
+          
           <Tabs value={view} onValueChange={handleViewChange} className="w-full">
             <TabsList className="mb-4">
               <TabsTrigger value="board">Board</TabsTrigger>
@@ -223,11 +231,6 @@ export default function TaskManager() {
           </Tabs>
         </main>
       </div>
-      
-      <footer className="py-2 px-4 bg-white border-t text-xs text-gray-500 flex justify-between">
-        <div>Task Manager v1.0</div>
-        <div>© 2023 Synapse</div>
-      </footer>
     </div>
   );
 }

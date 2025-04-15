@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Project, Task, Document, User, TeamMember } from '@/api/entities';
 import { InvokeLLM } from '@/api/integrations';
@@ -13,6 +14,7 @@ import { createPageUrl } from "@/utils";
 import { Link } from "react-router-dom";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { useSearchParams } from 'react-router-dom';
 
 export default function ProjectDashboard() {
   const [projects, setProjects] = useState([]);
@@ -21,10 +23,30 @@ export default function ProjectDashboard() {
   const [loading, setLoading] = useState(true);
   const [projectStats, setProjectStats] = useState(null);
   const [projectTasks, setProjectTasks] = useState([]);
+  const [searchParams] = useSearchParams();
+  const projectIdFromUrl = searchParams.get('projectId');
 
   useEffect(() => {
     loadProjects();
   }, []);
+
+  useEffect(() => {
+    if (projects.length > 0) {
+      // If there's a project ID in the URL, use that project
+      if (projectIdFromUrl) {
+        const projectFromUrl = projects.find(p => p.id === projectIdFromUrl);
+        if (projectFromUrl) {
+          setSelectedProject(projectFromUrl);
+          return;
+        }
+      }
+      
+      // Otherwise use the first project
+      if (!selectedProject) {
+        setSelectedProject(projects[0]);
+      }
+    }
+  }, [projects, projectIdFromUrl, selectedProject]);
 
   useEffect(() => {
     if (selectedProject) {
@@ -35,9 +57,6 @@ export default function ProjectDashboard() {
   const loadProjects = async () => {
     const fetchedProjects = await Project.list('-created_date');
     setProjects(fetchedProjects);
-    if (fetchedProjects.length > 0) {
-      setSelectedProject(fetchedProjects[0]);
-    }
     setLoading(false);
   };
 

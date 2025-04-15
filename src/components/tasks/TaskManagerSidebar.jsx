@@ -13,13 +13,24 @@ import {
   Calendar as CalendarIcon,
   List,
   Clock,
-  BarChart2
+  BarChart2,
+  Bell,
+  User,
+  X
 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { createPageUrl } from '@/utils';
+import { Link } from 'react-router-dom';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { format } from 'date-fns';
 
 export default function TaskManagerSidebar({ 
   projects, 
@@ -29,7 +40,10 @@ export default function TaskManagerSidebar({
   onViewChange, 
   onSearch, 
   filters, 
-  onFilterChange 
+  onFilterChange,
+  currentUser,
+  notifications = [],
+  toggleSidebar
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -52,11 +66,22 @@ export default function TaskManagerSidebar({
     { value: 'reports', label: 'Reports', icon: BarChart2 }
   ];
 
+  const unreadNotifications = notifications?.filter(n => !n.read) || [];
+
   return (
     <div className="w-64 border-r bg-white h-full flex flex-col">
+      <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center">
+          <h2 className="font-semibold text-lg">Task Manager</h2>
+        </div>
+        <Button variant="ghost" size="icon" onClick={toggleSidebar}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
       <div className="p-4 border-b">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold text-lg">Projects</h2>
+          <h2 className="font-semibold">Projects</h2>
           <Button variant="ghost" size="icon" onClick={() => setShowNewProject(true)}>
             <Plus className="h-4 w-4" />
           </Button>
@@ -204,6 +229,57 @@ export default function TaskManagerSidebar({
             </div>
           </div>
         )}
+      </div>
+
+      <div className="p-4 border-t">
+        <div className="flex justify-between items-center">
+          {currentUser && (
+            <div className="flex items-center">
+              <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-800 font-medium">
+                {currentUser.full_name?.charAt(0) || 'U'}
+              </div>
+              <div className="ml-2 text-sm font-medium truncate">
+                {currentUser.full_name}
+              </div>
+            </div>
+          )}
+          
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" className="relative">
+                <Bell className="h-5 w-5" />
+                {unreadNotifications.length > 0 && (
+                  <Badge className="absolute -top-1 -right-1 px-1.5 py-0.5 text-xs">
+                    {unreadNotifications.length}
+                  </Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80" align="end">
+              <div className="space-y-2">
+                <h3 className="font-medium">Notifications</h3>
+                
+                {notifications?.length === 0 && (
+                  <p className="text-sm text-gray-500">No notifications</p>
+                )}
+                
+                {notifications?.map(notification => (
+                  <div
+                    key={notification.id}
+                    className={`p-2 rounded-md text-sm ${
+                      notification.read ? 'bg-gray-50' : 'bg-blue-50'
+                    }`}
+                  >
+                    <div className="font-medium">{notification.message}</div>
+                    <div className="text-xs text-gray-500">
+                      {format(new Date(notification.date), 'MMM d, h:mm a')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
       
       <Dialog open={showNewProject} onOpenChange={setShowNewProject}>

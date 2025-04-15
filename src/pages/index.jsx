@@ -8,6 +8,12 @@ import TaskManager from "./TaskManager";
 
 import ProjectDashboard from "./ProjectDashboard";
 
+import TeamCalendar from "./TeamCalendar";
+
+import TeamManagement from "./TeamManagement";
+
+import Navigation from "./Navigation";
+
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
@@ -19,6 +25,12 @@ const PAGES = {
     TaskManager: TaskManager,
     
     ProjectDashboard: ProjectDashboard,
+    
+    TeamCalendar: TeamCalendar,
+    
+    TeamManagement: TeamManagement,
+    
+    Navigation: Navigation,
     
 }
 
@@ -54,6 +66,12 @@ function PagesContent() {
                 <Route path="/TaskManager" element={<TaskManager />} />
                 
                 <Route path="/ProjectDashboard" element={<ProjectDashboard />} />
+                
+                <Route path="/TeamCalendar" element={<TeamCalendar />} />
+                
+                <Route path="/TeamManagement" element={<TeamManagement />} />
+                
+                <Route path="/Navigation" element={<Navigation />} />
                 
             </Routes>
         </Layout>

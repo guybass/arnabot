@@ -19,10 +19,8 @@ export default function TaskCalendar({ tasks, project, onTasksChange }) {
     setSelectedDate(date);
     const tasksOnDate = getTasksForDate(date);
     if (tasksOnDate.length === 1) {
-      // If only one task, show it directly
       showTaskDetail(tasksOnDate[0]);
     } else if (tasksOnDate.length > 1) {
-      // If multiple tasks, show the date dialog
       setShowTaskDetails(true);
     }
   };
@@ -43,57 +41,6 @@ export default function TaskCalendar({ tasks, project, onTasksChange }) {
 
   const dateHasTasks = (date) => {
     return getTasksForDate(date).length > 0;
-  };
-
-  const getPriorityColor = (priority) => {
-    const colors = {
-      low: 'bg-blue-500',
-      medium: 'bg-yellow-500',
-      high: 'bg-orange-500',
-      urgent: 'bg-red-500'
-    };
-    return colors[priority] || 'bg-gray-500';
-  };
-
-  const renderTasksForSelectedDate = () => {
-    if (!selectedDate) return null;
-    
-    const tasksOnDate = getTasksForDate(selectedDate);
-    
-    if (tasksOnDate.length === 0) {
-      return (
-        <div className="text-center py-4 text-gray-500">
-          No tasks due on this date
-        </div>
-      );
-    }
-    
-    return (
-      <div className="space-y-2">
-        {tasksOnDate.map(task => (
-          <div 
-            key={task.id} 
-            className="p-3 border rounded-md hover:bg-gray-50 cursor-pointer"
-            onClick={() => showTaskDetail(task)}
-          >
-            <div className="flex items-center justify-between">
-              <div className="font-medium">{task.title}</div>
-              <Badge className={getPriorityColor(task.priority)}>
-                {task.priority}
-              </Badge>
-            </div>
-            <div className="text-sm text-gray-500 mt-1">
-              Status: {task.status}
-            </div>
-            {task.assigned_to && (
-              <div className="text-sm text-gray-500">
-                Assigned to: {task.assigned_to}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    );
   };
 
   return (
@@ -149,14 +96,6 @@ export default function TaskCalendar({ tasks, project, onTasksChange }) {
               <SelectItem value="week">Week View</SelectItem>
             </SelectContent>
           </Select>
-          <Button
-            onClick={() => {
-              // Open task creation dialog with current date
-              // This would connect to your existing task creation flow
-            }}
-          >
-            <Plus className="h-4 w-4 mr-1" /> Add Task
-          </Button>
         </div>
       </CardHeader>
       <CardContent>
@@ -173,10 +112,10 @@ export default function TaskCalendar({ tasks, project, onTasksChange }) {
             hasTasks: 'bg-blue-50 font-medium'
           }}
           components={{
-            DayContent: ({ day }) => (
+            Day: ({ date }) => (
               <div className="relative w-full h-full flex items-center justify-center">
-                <span>{day.day}</span>
-                {dateHasTasks(day.date) && (
+                <span>{date?.getDate()}</span>
+                {dateHasTasks(date) && (
                   <div className="absolute bottom-1 left-0 right-0 flex justify-center">
                     <div className="h-1 w-1 bg-blue-500 rounded-full"></div>
                   </div>
@@ -236,18 +175,29 @@ export default function TaskCalendar({ tasks, project, onTasksChange }) {
                 }}>
                   {selectedDate && getTasksForDate(selectedDate).length > 1 ? 'Back to List' : 'Close'}
                 </Button>
-                <Button
-                  onClick={() => {
-                    // This would open your existing task edit form
-                    setShowTaskDetails(false);
-                  }}
-                >
+                <Button>
                   Edit Task
                 </Button>
               </div>
             </div>
           ) : (
-            renderTasksForSelectedDate()
+            <div className="space-y-2">
+              {selectedDate && getTasksForDate(selectedDate).map(task => (
+                <Button
+                  key={task.id}
+                  variant="outline"
+                  className="w-full justify-start text-left"
+                  onClick={() => showTaskDetail(task)}
+                >
+                  <div>
+                    <div className="font-medium">{task.title}</div>
+                    <div className="text-sm text-gray-500">
+                      {task.status} • {task.priority} priority
+                    </div>
+                  </div>
+                </Button>
+              ))}
+            </div>
           )}
         </DialogContent>
       </Dialog>

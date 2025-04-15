@@ -23,9 +23,7 @@ export default function DependencySelector({ task, tasks, onDependencyChange }) 
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (task?.id) {
-      loadDependencies();
-    }
+    loadDependencies();
   }, [task]);
 
   const loadDependencies = async () => {
@@ -124,101 +122,108 @@ export default function DependencySelector({ task, tasks, onDependencyChange }) 
               </Alert>
             )}
 
-            <div className="space-y-4">
-              <Label>Current Dependencies</Label>
-              {dependencies.length === 0 ? (
-                <p className="text-sm text-gray-500">No dependencies yet</p>
-              ) : (
-                <div className="space-y-2">
-                  {dependencies.map(dep => {
+            <div>
+              <h3 className="text-sm font-medium mb-2">Current Dependencies</h3>
+              <div className="border rounded-md divide-y">
+                {dependencies.length === 0 ? (
+                  <p className="p-3 text-sm text-gray-500">No dependencies</p>
+                ) : (
+                  dependencies.map(dep => {
                     const isSource = dep.source_task_id === task.id;
-                    const relatedTask = getTaskById(isSource ? dep.target_task_id : dep.source_task_id);
-                    const type = dependencyTypes[dep.type];
+                    const relatedTaskId = isSource ? dep.target_task_id : dep.source_task_id;
+                    const relatedTask = getTaskById(relatedTaskId);
                     
                     return (
-                      <div 
-                        key={dep.id} 
-                        className="flex items-center justify-between p-3 border rounded-lg"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className={type.color}>
-                            {isSource ? type.label : `Is ${type.label.toLowerCase()} by`}
-                          </Badge>
-                          <span className="font-medium">{relatedTask?.title}</span>
+                      <div key={dep.id} className="p-3 flex justify-between items-center">
+                        <div className="flex-1">
+                          <div className="flex items-center">
+                            {isSource ? (
+                              <>
+                                <span className="text-sm">This task</span>
+                                <Badge className={`mx-2 ${dependencyTypes[dep.type].color}`}>
+                                  {dependencyTypes[dep.type].label}
+                                </Badge>
+                                <span className="font-medium">{relatedTask?.title || 'Unknown task'}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="font-medium">{relatedTask?.title || 'Unknown task'}</span>
+                                <Badge className={`mx-2 ${dependencyTypes[dep.type].color}`}>
+                                  {dependencyTypes[dep.type].label}
+                                </Badge>
+                                <span className="text-sm">this task</span>
+                              </>
+                            )}
+                          </div>
                         </div>
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="sm"
                           onClick={() => removeDependency(dep.id)}
                         >
-                          <X className="w-4 h-4" />
+                          <X className="h-4 w-4" />
                         </Button>
                       </div>
                     );
-                  })}
-                </div>
-              )}
+                  })
+                )}
+              </div>
             </div>
 
-            <div className="border-t pt-4">
-              <Label>Add New Dependency</Label>
-              <div className="flex gap-4 mt-2">
-                <Select
-                  value={newDependency.type}
-                  onValueChange={(value) => setNewDependency({ ...newDependency, type: value })}
-                >
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(dependencyTypes).map(([value, { label }]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div>
+              <h3 className="text-sm font-medium mb-2">Add Dependency</h3>
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="dependency-type">Type</Label>
+                  <Select
+                    value={newDependency.type}
+                    onValueChange={(value) => setNewDependency({...newDependency, type: value})}
+                  >
+                    <SelectTrigger id="dependency-type" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="blocks">Blocks</SelectItem>
+                      <SelectItem value="relates_to">Relates to</SelectItem>
+                      <SelectItem value="duplicates">Duplicates</SelectItem>
+                      <SelectItem value="requires">Requires</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                <div className="flex-1">
+                <div>
+                  <Label htmlFor="task-search">Find task</Label>
                   <Input
-                    placeholder="Search tasks..."
+                    id="task-search"
+                    placeholder="Search for a task..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full"
                   />
                 </div>
-              </div>
 
-              <ScrollArea className="h-[200px] mt-2 rounded-md border">
-                <div className="p-4 space-y-2">
-                  {filteredTasks.map(t => (
-                    <div
-                      key={t.id}
-                      className={`flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer ${
-                        newDependency.target_task_id === t.id ? 'border-2 border-primary' : 'border'
-                      }`}
-                      onClick={() => setNewDependency({ ...newDependency, target_task_id: t.id })}
-                    >
-                      <div>
-                        <div className="font-medium">{t.title}</div>
-                        {t.description && (
-                          <div className="text-sm text-gray-500 line-clamp-1">
-                            {t.description}
-                          </div>
-                        )}
-                      </div>
-                      {newDependency.target_task_id === t.id && (
-                        <Badge variant="secondary">Selected</Badge>
-                      )}
-                    </div>
-                  ))}
-                  {filteredTasks.length === 0 && (
-                    <div className="text-center text-gray-500 py-4">
-                      No matching tasks found
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
+                <ScrollArea className="h-[200px] border rounded-md p-2">
+                  <div className="space-y-2">
+                    {filteredTasks.length === 0 ? (
+                      <p className="text-sm text-gray-500 p-2">No matching tasks found</p>
+                    ) : (
+                      filteredTasks.map(t => (
+                        <div
+                          key={t.id}
+                          className={`p-2 rounded-md cursor-pointer ${
+                            newDependency.target_task_id === t.id ? 'bg-blue-50 border-blue-200 border' : 'hover:bg-gray-50 border'
+                          }`}
+                          onClick={() => setNewDependency({...newDependency, target_task_id: t.id})}
+                        >
+                          <div className="font-medium">{t.title}</div>
+                          {t.description && (
+                            <div className="text-sm text-gray-500 truncate">{t.description}</div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
             </div>
           </div>
 
@@ -226,12 +231,11 @@ export default function DependencySelector({ task, tasks, onDependencyChange }) 
             <Button variant="outline" onClick={() => setShowDependencyDialog(false)}>
               Cancel
             </Button>
-            <Button
+            <Button 
               onClick={addDependency}
-              disabled={!newDependency.target_task_id || !newDependency.type}
-              className="flex items-center gap-2"
+              disabled={!newDependency.target_task_id}
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 mr-1" />
               Add Dependency
             </Button>
           </DialogFooter>
