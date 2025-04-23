@@ -1,236 +1,371 @@
+
 import React, { useState, useEffect } from 'react';
-import { Project, Task, TaskColumn, StatusColumn, TaskDependency, TeamMember, User } from '@/api/entities';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { Task, Project, TeamMember } from '@/api/entities';
+import { useSearchParams, Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 import { 
   Tabs, 
+  TabsContent, 
   TabsList, 
-  TabsTrigger, 
-  TabsContent 
+  TabsTrigger 
 } from '@/components/ui/tabs';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import TaskBoard from '../components/tasks/TaskBoard';
-import TaskTimeline from '../components/tasks/TaskTimeline';
-import TaskCalendar from '../components/tasks/TaskCalendar';
-import TaskReports from '../components/tasks/TaskReports';
-import TaskConfiguration from '../components/tasks/TaskConfiguration';
-import TaskManagerSidebar from '../components/tasks/TaskManagerSidebar';
-import { Loader2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Filter, Plus, Table, KanbanSquare, BarChart2 } from 'lucide-react';
+import TaskTable from '../components/tasks/TaskTable';
+import KanbanBoard from '../components/tasks/KanbanBoard';
+import TaskForm from '../components/tasks/TaskForm';
+import GanttChart from '../components/tasks/GanttChart';
+import FeedbackButton from '../components/feedback/FeedbackButton';
+import { applyOwnershipFilter } from '@/components/utils/ownershipFilters';
 
 export default function TaskManager() {
-  const [searchParams] = useSearchParams();
-  const projectId = searchParams.get('projectId');
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
-  const [view, setView] = useState('board');
-  const [filter, setFilter] = useState({ status: 'all', assignee: 'all', priority: 'all' });
-  const [search, setSearch] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [notifications, setNotifications] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [showCreateTask, setShowCreateTask] = useState(false);
+  const [showEditTask, setShowEditTask] = useState(false);
+  const [showProjectInfo, setShowProjectInfo] = useState(false);
+  const [view, setView] = useState('table');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const projectIdFromUrl = searchParams.get('projectId');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterPriority, setFilterPriority] = useState('all');
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [ganttMode, setGanttMode] = useState('general'); // 'general' or 'group'
+  const [taskDependencies, setTaskDependencies] = useState([]);
 
   useEffect(() => {
-    loadCurrentUser();
     loadProjects();
   }, []);
 
   useEffect(() => {
     if (projects.length > 0) {
-      const projectToSelect = projectId 
-        ? projects.find(p => p.id === projectId) 
-        : projects[0];
-      
-      if (projectToSelect) {
-        setSelectedProject(projectToSelect);
+      // If there's a project ID in the URL, use that project
+      if (projectIdFromUrl) {
+        const projectFromUrl = projects.find(p => p.id === projectIdFromUrl);
+        if (projectFromUrl) {
+          setSelectedProject(projectFromUrl);
+          return;
+        }
       }
+      
+      // Otherwise use the first project
+      setSelectedProject(projects[0]);
     }
-  }, [projects, projectId]);
+  }, [projects, projectIdFromUrl]);
 
   useEffect(() => {
     if (selectedProject) {
-      loadProjectData();
+      loadTasks();
     }
   }, [selectedProject]);
 
-  const loadCurrentUser = async () => {
-    try {
-      const user = await User.me();
-      setCurrentUser(user);
-    } catch (error) {
-      console.error("Error loading current user:", error);
-    }
-  };
-
   const loadProjects = async () => {
     try {
-      const fetchedProjects = await Project.list('-created_date');
-      setProjects(fetchedProjects);
-      setIsLoading(false);
+      // Apply ownership filter to projects
+      const projectFilter = await applyOwnershipFilter();
+      const projectList = await Project.filter(projectFilter);
+      setProjects(projectList);
     } catch (error) {
-      console.error("Error loading projects:", error);
-      setIsLoading(false);
+      console.error('Error loading projects:', error);
     }
   };
 
-  const loadProjectData = async () => {
-    setIsLoading(true);
+  const loadTasks = async () => {
     try {
-      const projectTasks = await Task.filter({ project_id: selectedProject.id }, '-updated_date');
-      setTasks(projectTasks);
+      // Apply ownership filter combined with project filter
+      const taskFilter = await applyOwnershipFilter({ project_id: selectedProject.id });
+      const taskList = await Task.filter(taskFilter);
+      setTasks(taskList);
       
-      // Simulate loading notifications
-      const mockNotifications = [
-        { id: 1, type: 'task_assigned', message: 'You were assigned to task "Update API Documentation"', date: new Date(), read: false },
-        { id: 2, type: 'due_date', message: 'Task "Fix Login Bug" is due tomorrow', date: new Date(), read: false },
-        { id: 3, type: 'comment', message: 'John commented on "Homepage Redesign"', date: new Date(Date.now() - 86400000), read: true },
-      ];
-      setNotifications(mockNotifications);
+      // Fetch team members for the selected project
+      const teamFilter = await applyOwnershipFilter({ project_id: selectedProject.id });
+      const teamData = await TeamMember.filter(teamFilter);
+      setTeamMembers(teamData);
     } catch (error) {
-      console.error("Error loading project data:", error);
+      console.error('Error loading tasks:', error);
     }
-    setIsLoading(false);
   };
 
-  const handleTasksChange = () => {
-    loadProjectData();
+  const handleTaskCreate = async (taskData) => {
+    try {
+      // Process numeric fields to ensure they are proper numbers or null
+      const processedData = { ...taskData };
+      
+      // Ensure the project_id is set
+      processedData.project_id = selectedProject.id;
+      
+      // Ensure estimated_hours is a number or null
+      if (processedData.estimated_hours === '') {
+        processedData.estimated_hours = null;
+      }
+      
+      // Parse progress as a number
+      if (typeof processedData.progress === 'string') {
+        const progressVal = parseInt(processedData.progress, 10);
+        processedData.progress = isNaN(progressVal) ? 0 : progressVal;
+      }
+      
+      // Create the task with processed data
+      await Task.create(processedData);
+      setShowCreateTask(false);
+      loadTasks();
+    } catch (error) {
+      console.error('Error creating task:', error);
+      alert('Error creating task: ' + error.message);
+    }
   };
 
-  const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
+  const handleTaskUpdate = async (taskData) => {
+    try {
+      // Process numeric fields
+      const processedData = { ...taskData };
+      
+      // Ensure estimated_hours is a number or null
+      if (processedData.estimated_hours === '') {
+        processedData.estimated_hours = null;
+      }
+      
+      // Parse progress as a number
+      if (typeof processedData.progress === 'string' && processedData.progress !== '') {
+        const progressVal = parseInt(processedData.progress, 10);
+        processedData.progress = isNaN(progressVal) ? 0 : progressVal;
+      }
+      
+      // Update the task
+      await Task.update(selectedTask.id, processedData);
+      setShowEditTask(false);
+      setSelectedTask(null);
+      loadTasks();
+    } catch (error) {
+      console.error('Error updating task:', error);
+      alert('Error updating task: ' + error.message);
+    }
   };
 
-  const handleSearch = (searchTerm) => {
-    setSearch(searchTerm);
+  const handleTaskDelete = async (taskId) => {
+    try {
+      await Task.delete(taskId);
+      loadTasks();
+    } catch (error) {
+      console.error('Error deleting task:', error);
+    }
   };
 
-  const handleFilterChange = (newFilter) => {
-    setFilter({ ...filter, ...newFilter });
-  };
-
-  const handleViewChange = (newView) => {
-    setView(newView);
-  };
-
-  const handleProjectSelect = (project) => {
-    setSelectedProject(project);
+  const handleTaskStatusChange = async (taskId, status) => {
+    try {
+      await Task.update(taskId, { status });
+      loadTasks();
+    } catch (error) {
+      console.error('Error updating task status:', error);
+    }
   };
 
   const filteredTasks = tasks.filter(task => {
-    // Filter by search
-    const matchesSearch = search 
-      ? task.title.toLowerCase().includes(search.toLowerCase()) ||
-        task.description?.toLowerCase().includes(search.toLowerCase())
-      : true;
-    
-    // Filter by status
-    const matchesStatus = filter.status === 'all' 
-      ? true 
-      : task.status === filter.status;
-    
-    // Filter by assignee
-    const matchesAssignee = filter.assignee === 'all' 
-      ? true 
-      : filter.assignee === 'unassigned' 
-        ? !task.assigned_to 
-        : task.assigned_to === filter.assignee;
-    
-    // Filter by priority
-    const matchesPriority = filter.priority === 'all' 
-      ? true 
-      : task.priority === filter.priority;
-    
-    return matchesSearch && matchesStatus && matchesAssignee && matchesPriority;
+    const statusMatch = filterStatus === 'all' || task.status === filterStatus;
+    const priorityMatch = filterPriority === 'all' || task.priority === filterPriority;
+    return statusMatch && priorityMatch;
   });
-
-  if (isLoading && !selectedProject) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      <div className="flex flex-1 overflow-hidden">
-        {isSidebarOpen && (
-          <TaskManagerSidebar 
-            projects={projects}
-            selectedProject={selectedProject}
-            onProjectSelect={handleProjectSelect}
-            view={view}
-            onViewChange={handleViewChange}
-            onSearch={handleSearch}
-            filters={filter}
-            onFilterChange={handleFilterChange}
-            currentUser={currentUser}
-            notifications={notifications}
-            toggleSidebar={toggleSidebar}
-          />
-        )}
-        
-        <main className="flex-1 overflow-auto p-4">
-          {!isSidebarOpen && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={toggleSidebar}
-              className="mb-4"
+      <header className="bg-white border-b p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h1 className="text-xl font-semibold">Task Manager</h1>
+            
+            <Select
+              value={selectedProject?.id || ''}
+              onValueChange={(value) => {
+                const project = projects.find(p => p.id === value);
+                setSelectedProject(project);
+                setSearchParams({ projectId: value });
+              }}
             >
-              Show Sidebar
-            </Button>
-          )}
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select Project" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>{project.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           
-          <Tabs value={view} onValueChange={handleViewChange} className="w-full">
-            <TabsList className="mb-4">
-              <TabsTrigger value="board">Board</TabsTrigger>
-              <TabsTrigger value="timeline">Timeline</TabsTrigger>
-              <TabsTrigger value="calendar">Calendar</TabsTrigger>
-              <TabsTrigger value="reports">Reports</TabsTrigger>
-              <TabsTrigger value="settings">Settings</TabsTrigger>
-            </TabsList>
+          <div className="flex items-center gap-2">
+            <Button 
+              onClick={() => setShowCreateTask(true)}
+              className="flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" /> Add Task
+            </Button>
+          </div>
+        </div>
+        
+        <div className="flex items-center justify-between mt-4">
+          <div className="flex items-center gap-4">
+            {view === 'gantt' && (
+              <Select value={ganttMode} onValueChange={setGanttMode}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Gantt View Mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">General Gantt</SelectItem>
+                  <SelectItem value="group">Grouped Gantt</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
             
-            <TabsContent value="board" className="mt-0">
-              <TaskBoard 
-                tasks={filteredTasks}
-                project={selectedProject}
-                onTasksChange={handleTasksChange}
-              />
-            </TabsContent>
-            
-            <TabsContent value="timeline" className="mt-0">
-              <TaskTimeline 
-                tasks={filteredTasks}
-                project={selectedProject}
-                onTasksChange={handleTasksChange}
-              />
-            </TabsContent>
-            
-            <TabsContent value="calendar" className="mt-0">
-              <TaskCalendar 
-                tasks={filteredTasks}
-                project={selectedProject}
-                onTasksChange={handleTasksChange}
-              />
-            </TabsContent>
-            
-            <TabsContent value="reports" className="mt-0">
-              <TaskReports 
-                tasks={tasks}
-                project={selectedProject}
-              />
-            </TabsContent>
-            
-            <TabsContent value="settings" className="mt-0">
-              <TaskConfiguration 
-                project={selectedProject}
-                onSettingsChange={loadProjectData}
-              />
-            </TabsContent>
-          </Tabs>
-        </main>
-      </div>
+            <div className="flex items-center gap-2">
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-[130px]">
+                  <Filter className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="todo">To Do</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="review">Review</SelectItem>
+                  <SelectItem value="done">Done</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select value={filterPriority} onValueChange={setFilterPriority}>
+                <SelectTrigger className="w-[130px]">
+                  <Filter className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Priorities</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="urgent">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+      </header>
+      
+      <main className="flex-1 overflow-auto p-4">
+        <Tabs value={view} onValueChange={setView}>
+          <TabsList className="mb-4">
+            <TabsTrigger value="table" className="flex items-center">
+              <Table className="h-4 w-4 mr-2" /> Table
+            </TabsTrigger>
+            <TabsTrigger value="kanban" className="flex items-center">
+              <KanbanSquare className="h-4 w-4 mr-2" /> Kanban
+            </TabsTrigger>
+            <TabsTrigger value="gantt" className="flex items-center">
+              <BarChart2 className="h-4 w-4 mr-2" /> Gantt
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="table">
+            <Card>
+              <CardContent className="p-0">
+                <TaskTable 
+                  tasks={filteredTasks} 
+                  onEdit={(task) => {
+                    setSelectedTask(task);
+                    setShowEditTask(true);
+                  }}
+                  onDelete={handleTaskDelete}
+                  onStatusChange={handleTaskStatusChange}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="kanban">
+            <KanbanBoard 
+              tasks={filteredTasks} 
+              onEdit={(task) => {
+                setSelectedTask(task);
+                setShowEditTask(true);
+              }}
+              onDelete={handleTaskDelete}
+              onStatusChange={handleTaskStatusChange}
+            />
+          </TabsContent>
+
+          <TabsContent value="gantt">
+            <Card>
+              <CardContent>
+                <GanttChart 
+                  tasks={filteredTasks}
+                  groupLevel={ganttMode === 'group'}
+                  dependencies={taskDependencies}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
+
+      {/* Task Creation Dialog */}
+      <Dialog 
+        open={showCreateTask} 
+        onOpenChange={(open) => {
+          if (!open) setShowCreateTask(false);
+        }}
+      >
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <TaskForm 
+            task={null}
+            tasks={tasks}
+            project={selectedProject}
+            teamMembers={teamMembers}
+            onSubmit={handleTaskCreate}
+            onCancel={() => setShowCreateTask(false)}
+            projects={projects}
+            initialStatus="todo"
+          />
+        </DialogContent>
+      </Dialog>
+      
+      {/* Task Edit Dialog */}
+      <Dialog 
+        open={showEditTask} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowEditTask(false);
+            setSelectedTask(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          {selectedTask && (
+            <TaskForm
+              task={selectedTask}
+              tasks={tasks.filter(t => t.id !== selectedTask.id)}
+              project={selectedProject}
+              teamMembers={teamMembers}
+              onSubmit={handleTaskUpdate}
+              onCancel={() => {
+                setShowEditTask(false);
+                setSelectedTask(null);
+              }}
+              projects={projects}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+      
+      <FeedbackButton pageName="TaskManager" />
     </div>
   );
 }

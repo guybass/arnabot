@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Project, User } from '@/api/entities';
 import { InvokeLLM } from '@/api/integrations';
@@ -10,12 +11,26 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import FeedbackButton from '../components/feedback/FeedbackButton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { applyOwnershipFilter } from '@/components/utils/ownershipFilters';
 
 export default function Dashboard() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
   const [selectedTab, setSelectedTab] = useState('all');
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProject, setNewProject] = useState({
+    title: '',
+    description: '',
+    status: 'planning',
+    start_date: format(new Date(), 'yyyy-MM-dd'),
+    target_date: ''
+  });
 
   useEffect(() => {
     loadCurrentUser();
@@ -33,7 +48,9 @@ export default function Dashboard() {
 
   const loadProjects = async () => {
     try {
-      const fetchedProjects = await Project.list('-created_date');
+      // Apply ownership filter
+      const filterCriteria = await applyOwnershipFilter();
+      const fetchedProjects = await Project.filter(filterCriteria, '-created_date');
       setProjects(fetchedProjects);
     } catch (error) {
       console.error("Error loading projects:", error);
@@ -70,6 +87,28 @@ export default function Dashboard() {
     );
   }
 
+  const handleCreateProject = async () => {
+    try {
+      // We don't need to explicitly set created_by, the SDK handles it
+      const createdProject = await Project.create(newProject);
+      setShowNewProject(false);
+      // Reset form
+      setNewProject({
+        title: '',
+        description: '',
+        status: 'planning',
+        start_date: format(new Date(), 'yyyy-MM-dd'),
+        target_date: ''
+      });
+      // Refresh projects list
+      loadProjects();
+      // Navigate to the new project's dashboard
+      window.location.href = createPageUrl(`ProjectDashboard?projectId=${createdProject.id}`);
+    } catch (error) {
+      console.error('Error creating project:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-[1800px] mx-auto p-4 md:p-6 space-y-6">
@@ -88,12 +127,13 @@ export default function Dashboard() {
                 Task Manager
               </Button>
             </Link>
-            <Link to={createPageUrl('ProjectDashboard')}>
-              <Button className="flex items-center">
-                <Plus className="mr-2 h-4 w-4" />
-                New Project
-              </Button>
-            </Link>
+            <Button 
+              className="flex items-center"
+              onClick={() => setShowNewProject(true)} // Changed from Link to Button
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              New Project
+            </Button>
           </div>
         </div>
 
@@ -205,40 +245,101 @@ export default function Dashboard() {
               <CardTitle>Recent Activity</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {getRecentProjects().map(project => (
-                  <div key={project.id} className="border-b pb-4 last:border-0">
-                    <div className="font-medium">{project.title}</div>
-                    <div className="flex justify-between text-xs text-gray-500 mt-1">
-                      <Badge className={getStatusColor(project.status)}>
-                        {project.status.replace('_', ' ')}
-                      </Badge>
-                      <div>
-                        {format(new Date(project.updated_date || project.created_date), 'MMM d, yyyy')}
+              <ScrollArea className="h-[300px] w-full">
+                <div className="space-y-4">
+                  {getRecentProjects().map(project => (
+                    <div key={project.id} className="border-b pb-4 last:border-0">
+                      <div className="font-medium">{project.title}</div>
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <Badge className={getStatusColor(project.status)}>
+                          {project.status.replace('_', ' ')}
+                        </Badge>
+                        <div>
+                          {format(new Date(project.updated_date || project.created_date), 'MMM d, yyyy')}
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <Link 
+                          to={createPageUrl(`ProjectDashboard?projectId=${project.id}`)}
+                        >
+                          <Button variant="outline" size="sm" className="w-full">
+                            View Project
+                          </Button>
+                        </Link>
                       </div>
                     </div>
-                    <div className="mt-2">
-                      <Link 
-                        to={createPageUrl(`ProjectDashboard?projectId=${project.id}`)}
-                      >
-                        <Button variant="outline" size="sm" className="w-full">
-                          View Project
-                        </Button>
-                      </Link>
+                  ))}
+                  
+                  {projects.length === 0 && (
+                    <div className="text-center py-4 text-gray-500">
+                      No recent activity
                     </div>
-                  </div>
-                ))}
-                
-                {projects.length === 0 && (
-                  <div className="text-center py-4 text-gray-500">
-                    No recent activity
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              </ScrollArea>
             </CardContent>
           </Card>
         </div>
+
+        {/* Add New Project Dialog */}
+        <Dialog open={showNewProject} onOpenChange={setShowNewProject}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Create New Project</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Project Title</label>
+                <Input
+                  placeholder="Enter project title"
+                  value={newProject.title}
+                  onChange={(e) => setNewProject({ ...newProject, title: e.target.value })}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Description</label>
+                <Textarea
+                  placeholder="Enter project description"
+                  value={newProject.description}
+                  onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                  rows={4}
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Start Date</label>
+                  <Input
+                    type="date"
+                    value={newProject.start_date}
+                    onChange={(e) => setNewProject({ ...newProject, start_date: e.target.value })}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Target Date</label>
+                  <Input
+                    type="date"
+                    value={newProject.target_date}
+                    onChange={(e) => setNewProject({ ...newProject, target_date: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowNewProject(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateProject}>
+                Create Project
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
+      
+      <FeedbackButton pageName="Dashboard" />
     </div>
   );
 }

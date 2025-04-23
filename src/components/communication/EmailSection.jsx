@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Mail, 
   Plus, 
@@ -448,99 +449,101 @@ export default function EmailSection({ project }) {
 
       {/* Compose New Email Dialog */}
       <Dialog open={showNewEmail} onOpenChange={setShowNewEmail}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle>Compose Email</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">From:</label>
-              <Input
-                value={currentUser?.email || newEmail.sender}
-                onChange={(e) => setNewEmail({ ...newEmail, sender: e.target.value })}
-                placeholder="Your email address"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">To:</label>
-              <div className="flex flex-wrap gap-2 border p-2 rounded-md min-h-9">
-                {newEmail.recipients.map((recipient, index) => (
-                  <Badge key={index} variant="secondary" className="flex items-center gap-1">
-                    {recipient}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-4 w-4 p-0"
-                      onClick={() => setNewEmail({
-                        ...newEmail,
-                        recipients: newEmail.recipients.filter((_, i) => i !== index)
-                      })}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </Badge>
-                ))}
+          <ScrollArea className="h-[calc(80vh-180px)]">
+            <div className="space-y-4 py-4 pr-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">From:</label>
                 <Input
-                  className="flex-1 min-w-[100px] border-none shadow-none focus-visible:ring-0"
-                  placeholder="Add recipient email address"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && e.target.value) {
-                      e.preventDefault();
-                      setNewEmail({
-                        ...newEmail,
-                        recipients: [...newEmail.recipients, e.target.value.trim()]
-                      });
-                      e.target.value = '';
-                    }
-                  }}
+                  value={currentUser?.email || newEmail.sender}
+                  onChange={(e) => setNewEmail({ ...newEmail, sender: e.target.value })}
+                  placeholder="Your email address"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">To:</label>
+                <div className="flex flex-wrap gap-2 border p-2 rounded-md min-h-9">
+                  {newEmail.recipients.map((recipient, index) => (
+                    <Badge key={index} variant="secondary" className="flex items-center gap-1">
+                      {recipient}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-4 w-4 p-0"
+                        onClick={() => setNewEmail({
+                          ...newEmail,
+                          recipients: newEmail.recipients.filter((_, i) => i !== index)
+                        })}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </Badge>
+                  ))}
+                  <Input
+                    className="flex-1 min-w-[100px] border-none shadow-none focus-visible:ring-0"
+                    placeholder="Add recipient email address"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.target.value) {
+                        e.preventDefault();
+                        setNewEmail({
+                          ...newEmail,
+                          recipients: [...newEmail.recipients, e.target.value.trim()]
+                        });
+                        e.target.value = '';
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700">Team Members:</label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {teamMembers.map((member) => (
+                    <Badge
+                      key={member.id}
+                      variant={newEmail.recipients.includes(member.email) ? 'default' : 'outline'}
+                      className="cursor-pointer"
+                      onClick={() => {
+                        if (newEmail.recipients.includes(member.email)) {
+                          setNewEmail({
+                            ...newEmail,
+                            recipients: newEmail.recipients.filter(r => r !== member.email)
+                          });
+                        } else {
+                          setNewEmail({
+                            ...newEmail,
+                            recipients: [...newEmail.recipients, member.email]
+                          });
+                        }
+                      }}
+                    >
+                      {member.email}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Subject:</label>
+                <Input
+                  value={newEmail.subject}
+                  onChange={(e) => setNewEmail({ ...newEmail, subject: e.target.value })}
+                  placeholder="Email subject"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Message:</label>
+                <Textarea
+                  value={newEmail.body}
+                  onChange={(e) => setNewEmail({ ...newEmail, body: e.target.value })}
+                  placeholder="Type your message here..."
+                  className="min-h-[200px]"
                 />
               </div>
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Team Members:</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {teamMembers.map((member) => (
-                  <Badge
-                    key={member.id}
-                    variant={newEmail.recipients.includes(member.email) ? 'default' : 'outline'}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      if (newEmail.recipients.includes(member.email)) {
-                        setNewEmail({
-                          ...newEmail,
-                          recipients: newEmail.recipients.filter(r => r !== member.email)
-                        });
-                      } else {
-                        setNewEmail({
-                          ...newEmail,
-                          recipients: [...newEmail.recipients, member.email]
-                        });
-                      }
-                    }}
-                  >
-                    {member.email}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Subject:</label>
-              <Input
-                value={newEmail.subject}
-                onChange={(e) => setNewEmail({ ...newEmail, subject: e.target.value })}
-                placeholder="Email subject"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Message:</label>
-              <Textarea
-                value={newEmail.body}
-                onChange={(e) => setNewEmail({ ...newEmail, body: e.target.value })}
-                placeholder="Type your message here..."
-                className="min-h-[200px]"
-              />
-            </div>
-          </div>
+          </ScrollArea>
           <DialogFooter>
             <Button variant="outline" onClick={() => createEmail('draft')}>
               Save as Draft
@@ -568,7 +571,7 @@ export default function EmailSection({ project }) {
 
       {/* Email Detail Dialog */}
       <Dialog open={showEmailDetail} onOpenChange={setShowEmailDetail}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl max-h-[80vh]">
           {selectedEmail && (
             <>
               <DialogHeader>
@@ -602,125 +605,127 @@ export default function EmailSection({ project }) {
                   </div>
                 </div>
               </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="flex justify-between items-center text-sm text-gray-500">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">From:</span>
-                    <span>{selectedEmail.sender}</span>
+              <ScrollArea className="h-[calc(80vh-180px)]">
+                <div className="space-y-4 py-4 pr-4">
+                  <div className="flex justify-between items-center text-sm text-gray-500">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">From:</span>
+                      <span>{selectedEmail.sender}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      {selectedEmail.sent_date 
+                        ? format(new Date(selectedEmail.sent_date), 'MMM d, yyyy h:mm a')
+                        : format(new Date(selectedEmail.created_date), 'MMM d, yyyy h:mm a')}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    {selectedEmail.sent_date 
-                      ? format(new Date(selectedEmail.sent_date), 'MMM d, yyyy h:mm a')
-                      : format(new Date(selectedEmail.created_date), 'MMM d, yyyy h:mm a')}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <span className="font-medium">To:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {selectedEmail.recipients?.map((recipient, index) => (
-                      <Badge key={index} variant="secondary">
-                        {recipient}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-                {selectedEmail.cc?.length > 0 && (
                   <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <span className="font-medium">CC:</span>
+                    <span className="font-medium">To:</span>
                     <div className="flex flex-wrap gap-1">
-                      {selectedEmail.cc.map((cc, index) => (
+                      {selectedEmail.recipients?.map((recipient, index) => (
                         <Badge key={index} variant="secondary">
-                          {cc}
+                          {recipient}
                         </Badge>
                       ))}
                     </div>
                   </div>
-                )}
-                <div className="border-t pt-4">
-                  <div className="prose max-w-none">
-                    {selectedEmail.body.split('\n').map((line, i) => (
-                      <p key={i}>{line}</p>
-                    ))}
-                  </div>
-                </div>
-                
-                {/* Show conversation thread if it exists */}
-                {conversationEmails.length > 1 && (
+                  {selectedEmail.cc?.length > 0 && (
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <span className="font-medium">CC:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {selectedEmail.cc.map((cc, index) => (
+                          <Badge key={index} variant="secondary">
+                            {cc}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="border-t pt-4">
-                    <h3 className="font-medium text-lg mb-4">Conversation History</h3>
-                    <div className="space-y-4">
-                      {conversationEmails
-                        .filter(email => email.id !== selectedEmail.id)
-                        .sort((a, b) => new Date(b.sent_date || b.created_date) - new Date(a.sent_date || a.created_date))
-                        .map(email => (
-                          <div key={email.id} className="border-l-4 border-gray-200 pl-4 py-2">
-                            <div className="flex justify-between items-center text-sm text-gray-500">
-                              <div>
-                                <span className="font-medium">{email.sender}</span>
-                                <span className="mx-2">•</span>
-                                <span>
-                                  {email.sent_date 
-                                    ? format(new Date(email.sent_date), 'MMM d, yyyy h:mm a')
-                                    : format(new Date(email.created_date), 'MMM d, yyyy h:mm a')}
-                                </span>
+                    <div className="prose max-w-none">
+                      {selectedEmail.body.split('\n').map((line, i) => (
+                        <p key={i}>{line}</p>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Show conversation thread if it exists */}
+                  {conversationEmails.length > 1 && (
+                    <div className="border-t pt-4">
+                      <h3 className="font-medium text-lg mb-4">Conversation History</h3>
+                      <div className="space-y-4">
+                        {conversationEmails
+                          .filter(email => email.id !== selectedEmail.id)
+                          .sort((a, b) => new Date(b.sent_date || b.created_date) - new Date(a.sent_date || a.created_date))
+                          .map(email => (
+                            <div key={email.id} className="border-l-4 border-gray-200 pl-4 py-2">
+                              <div className="flex justify-between items-center text-sm text-gray-500">
+                                <div>
+                                  <span className="font-medium">{email.sender}</span>
+                                  <span className="mx-2">•</span>
+                                  <span>
+                                    {email.sent_date 
+                                      ? format(new Date(email.sent_date), 'MMM d, yyyy h:mm a')
+                                      : format(new Date(email.created_date), 'MMM d, yyyy h:mm a')}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="mt-2 prose-sm max-w-none text-gray-700">
+                                {email.body.split('\n').slice(0, 3).map((line, i) => (
+                                  <p key={i}>{line}</p>
+                                ))}
+                                {email.body.split('\n').length > 3 && (
+                                  <Button
+                                    variant="link"
+                                    size="sm"
+                                    className="p-0 h-auto text-blue-500"
+                                    onClick={() => {
+                                      setSelectedEmail(email);
+                                    }}
+                                  >
+                                    Show more
+                                  </Button>
+                                )}
                               </div>
                             </div>
-                            <div className="mt-2 prose-sm max-w-none text-gray-700">
-                              {email.body.split('\n').slice(0, 3).map((line, i) => (
-                                <p key={i}>{line}</p>
-                              ))}
-                              {email.body.split('\n').length > 3 && (
-                                <Button
-                                  variant="link"
-                                  size="sm"
-                                  className="p-0 h-auto text-blue-500"
-                                  onClick={() => {
-                                    setSelectedEmail(email);
-                                  }}
-                                >
-                                  Show more
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-                
-                {/* Reply section */}
-                {selectedEmail.status === 'sent' && (
-                  <div className="border-t pt-4">
-                    <h3 className="font-medium mb-2">Reply</h3>
-                    <Textarea
-                      value={replyContent}
-                      onChange={(e) => setReplyContent(e.target.value)}
-                      placeholder="Type your reply here..."
-                      className="min-h-[100px]"
-                    />
-                    <div className="flex justify-end mt-2">
-                      <Button
-                        onClick={replyToEmail}
-                        disabled={!replyContent || isSending}
-                        className="flex items-center gap-2"
-                      >
-                        {isSending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Sending...
-                          </>
-                        ) : (
-                          <>
-                            <Reply className="w-4 h-4" />
-                            Send Reply
-                          </>
-                        )}
-                      </Button>
+                  )}
+                  
+                  {/* Reply section */}
+                  {selectedEmail.status === 'sent' && (
+                    <div className="border-t pt-4">
+                      <h3 className="font-medium mb-2">Reply</h3>
+                      <Textarea
+                        value={replyContent}
+                        onChange={(e) => setReplyContent(e.target.value)}
+                        placeholder="Type your reply here..."
+                        className="min-h-[100px]"
+                      />
+                      <div className="flex justify-end mt-2">
+                        <Button
+                          onClick={replyToEmail}
+                          disabled={!replyContent || isSending}
+                          className="flex items-center gap-2"
+                        >
+                          {isSending ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Sending...
+                            </>
+                          ) : (
+                            <>
+                              <Reply className="w-4 h-4" />
+                              Send Reply
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              </ScrollArea>
             </>
           )}
         </DialogContent>

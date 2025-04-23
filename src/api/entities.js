@@ -17,6 +17,8 @@ export const TaskDependency = base44.entities.TaskDependency;
 
 export const StatusColumn = base44.entities.StatusColumn;
 
+export const PageFeedback = base44.entities.PageFeedback;
+
 
 
 // auth sdk:

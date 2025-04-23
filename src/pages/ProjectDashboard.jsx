@@ -15,6 +15,9 @@ import { Link } from "react-router-dom";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useSearchParams } from 'react-router-dom';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import FeedbackButton from '../components/feedback/FeedbackButton';
+import { applyOwnershipFilter, filterByOwnership } from '@/components/utils/ownershipFilters';
 
 export default function ProjectDashboard() {
   const [projects, setProjects] = useState([]);
@@ -55,20 +58,37 @@ export default function ProjectDashboard() {
   }, [selectedProject]);
 
   const loadProjects = async () => {
-    const fetchedProjects = await Project.list('-created_date');
-    setProjects(fetchedProjects);
-    setLoading(false);
+    try {
+      // Apply ownership filter
+      const filterCriteria = await applyOwnershipFilter();
+      const fetchedProjects = await Project.filter(filterCriteria, '-created_date');
+      setProjects(fetchedProjects);
+      setLoading(false);
+    } catch (error) {
+      console.error("Error loading projects:", error);
+      setLoading(false);
+    }
   };
 
   const loadProjectData = async () => {
     setLoading(true);
-    const [projectTasks, projectDocs] = await Promise.all([
-      Task.filter({ project_id: selectedProject.id }, '-updated_date'),
-      Document.filter({ project_id: selectedProject.id }, '-created_date')
-    ]);
-    setProjectTasks(projectTasks);
-    setDocuments(projectDocs);
-    setLoading(false);
+    
+    try {
+      // Load tasks with ownership filter
+      const taskFilter = await applyOwnershipFilter({ project_id: selectedProject.id });
+      const projectTasks = await Task.filter(taskFilter, '-updated_date');
+      
+      // Documents should also be filtered by ownership
+      const docFilter = await applyOwnershipFilter({ project_id: selectedProject.id });
+      const projectDocs = await Document.filter(docFilter, '-created_date');
+      
+      setProjectTasks(projectTasks);
+      setDocuments(projectDocs);
+    } catch (error) {
+      console.error('Error loading project data:', error);
+    } finally {
+      setLoading(false);
+    }
     
     // Load project statistics
     loadProjectStats(projectTasks);
@@ -164,165 +184,167 @@ export default function ProjectDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-[1800px] mx-auto p-4 md:p-6 space-y-6">
-        <ProjectHeader 
-          projects={projects}
-          selectedProject={selectedProject}
-          onProjectSelect={setSelectedProject}
-          onProjectsChange={loadProjects}
-        />
+    <div className="max-w-[1800px] mx-auto p-4 md:p-6 space-y-6">
+      <ProjectHeader 
+        projects={projects}
+        selectedProject={selectedProject}
+        onProjectSelect={setSelectedProject}
+        onProjectsChange={loadProjects}
+      />
 
-        {selectedProject && projectStats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Progress</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{projectStats.progressPercentage}%</div>
-                <Progress 
-                  value={projectStats.progressPercentage} 
-                  className="h-2 mt-2" 
-                />
-                <div className="flex justify-between mt-1 text-xs text-gray-500">
-                  <div>{projectStats.completedTasks} of {projectStats.totalTasks} tasks completed</div>
+      {selectedProject && projectStats && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Progress</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{projectStats.progressPercentage}%</div>
+              <Progress 
+                value={projectStats.progressPercentage} 
+                className="h-2 mt-2" 
+              />
+              <div className="flex justify-between mt-1 text-xs text-gray-500">
+                <div>{projectStats.completedTasks} of {projectStats.totalTasks} tasks completed</div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Task Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="text-xs text-gray-500">To Do</div>
+                  <div className="text-xl font-bold">{projectStats.todoTasks}</div>
                 </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Task Status</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <div className="text-xs text-gray-500">To Do</div>
-                    <div className="text-xl font-bold">{projectStats.todoTasks}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-500">In Progress</div>
-                    <div className="text-xl font-bold">{projectStats.inProgressTasks}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-500">Review</div>
-                    <div className="text-xl font-bold">{projectStats.reviewTasks}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-500">Done</div>
-                    <div className="text-xl font-bold">{projectStats.completedTasks}</div>
-                  </div>
+                <div>
+                  <div className="text-xs text-gray-500">In Progress</div>
+                  <div className="text-xl font-bold">{projectStats.inProgressTasks}</div>
                 </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Team & Priority</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <div className="text-xs text-gray-500">Team Members</div>
-                    <div className="text-xl font-bold">{projectStats.teamMemberCount}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-500">High Priority</div>
-                    <div className="text-xl font-bold">{projectStats.highPriorityTasks}</div>
-                  </div>
+                <div>
+                  <div className="text-xs text-gray-500">Review</div>
+                  <div className="text-xl font-bold">{projectStats.reviewTasks}</div>
                 </div>
-              </CardContent>
-            </Card>
-            
+                <div>
+                  <div className="text-xs text-gray-500">Done</div>
+                  <div className="text-xl font-bold">{projectStats.completedTasks}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Team & Priority</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="text-xs text-gray-500">Team Members</div>
+                  <div className="text-xl font-bold">{projectStats.teamMemberCount}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">High Priority</div>
+                  <div className="text-xl font-bold">{projectStats.highPriorityTasks}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Project Info</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Badge className={getStatusColor(selectedProject.status)}>
+                  {selectedProject.status.replace('_', ' ')}
+                </Badge>
+                <div className="flex items-center justify-between">
+                  <Link 
+                    to={createPageUrl(`TaskManager?projectId=${selectedProject.id}`)}
+                    className="w-full"
+                  >
+                    <Button variant="outline" className="w-full">
+                      <span>Go to Tasks</span>
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <div className="grid lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-8 space-y-6">
+          {selectedProject && projectTasks.length > 0 && (
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Project Info</CardTitle>
+              <CardHeader>
+                <CardTitle>Recent Tasks</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  <Badge className={getStatusColor(selectedProject.status)}>
-                    {selectedProject.status.replace('_', ' ')}
-                  </Badge>
-                  <div className="flex items-center justify-between">
-                    <Link 
-                      to={createPageUrl(`TaskManager?projectId=${selectedProject.id}`)}
-                      className="w-full"
+                  {projectTasks.slice(0, 5).map(task => (
+                    <div 
+                      key={task.id} 
+                      className="flex justify-between items-center p-3 border rounded-md hover:bg-gray-50"
                     >
-                      <Button variant="outline" className="w-full">
-                        <span>Go to Tasks</span>
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </Button>
-                    </Link>
-                  </div>
+                      <div>
+                        <div className="font-medium">{task.title}</div>
+                        <div className="text-sm text-gray-500">
+                          {task.assigned_to ? `Assigned to: ${task.assigned_to}` : 'Unassigned'} 
+                          • Priority: {task.priority}
+                        </div>
+                      </div>
+                      <Badge
+                        className={
+                          task.status === 'done' ? 'bg-green-100 text-green-800' :
+                          task.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                          task.status === 'review' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }
+                      >
+                        {task.status}
+                      </Badge>
+                    </div>
+                  ))}
+                  
+                  <Link to={createPageUrl(`TaskManager?projectId=${selectedProject.id}`)}>
+                    <Button variant="outline" className="w-full mt-4">
+                      View All Tasks
+                    </Button>
+                  </Link>
                 </div>
               </CardContent>
             </Card>
-          </div>
-        )}
-
-        <div className="grid lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 space-y-6">
-            {selectedProject && projectTasks.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Tasks</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {projectTasks.slice(0, 5).map(task => (
-                      <div 
-                        key={task.id} 
-                        className="flex justify-between items-center p-3 border rounded-md hover:bg-gray-50"
-                      >
-                        <div>
-                          <div className="font-medium">{task.title}</div>
-                          <div className="text-sm text-gray-500">
-                            {task.assigned_to ? `Assigned to: ${task.assigned_to}` : 'Unassigned'} 
-                            • Priority: {task.priority}
-                          </div>
-                        </div>
-                        <Badge
-                          className={
-                            task.status === 'done' ? 'bg-green-100 text-green-800' :
-                            task.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                            task.status === 'review' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-gray-100 text-gray-800'
-                          }
-                        >
-                          {task.status}
-                        </Badge>
-                      </div>
-                    ))}
-                    
-                    <Link to={createPageUrl(`TaskManager?projectId=${selectedProject.id}`)}>
-                      <Button variant="outline" className="w-full mt-4">
-                        View All Tasks
-                      </Button>
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-            
-            <TeamSection project={selectedProject} />
-            <EmailSection project={selectedProject} />
-            <DocumentSection 
-              documents={documents}
-              project={selectedProject}
-              onDocumentsChange={loadProjectData}
-            />
-          </div>
+          )}
           
-          <div className="lg:col-span-4">
+          <TeamSection project={selectedProject} />
+          <EmailSection project={selectedProject} />
+          <DocumentSection 
+            documents={documents}
+            project={selectedProject}
+            onDocumentsChange={loadProjectData}
+          />
+        </div>
+        
+        <div className="lg:col-span-4">
+          <ScrollArea className="h-[80vh]">
             <AIAssistant
               project={selectedProject}
               onGenerateUpdate={generateProjectUpdate}
               onDocumentCreate={loadProjectData}
             />
-          </div>
+          </ScrollArea>
         </div>
       </div>
+
+      <FeedbackButton pageName="ProjectDashboard" />
     </div>
   );
 }

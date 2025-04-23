@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import {
   LayoutDashboard,
   ArrowRight
 } from 'lucide-react';
+import FeedbackButton from '../components/feedback/FeedbackButton';
 
 export default function Navigation() {
   const menuItems = [
@@ -76,6 +78,8 @@ export default function Navigation() {
           ))}
         </div>
       </div>
+      
+      <FeedbackButton pageName="Navigation" />
     </div>
   );
 }

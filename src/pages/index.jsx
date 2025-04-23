@@ -14,6 +14,8 @@ import TeamManagement from "./TeamManagement";
 
 import Navigation from "./Navigation";
 
+import README from "./README";
+
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
@@ -31,6 +33,8 @@ const PAGES = {
     TeamManagement: TeamManagement,
     
     Navigation: Navigation,
+    
+    README: README,
     
 }
 
@@ -72,6 +76,8 @@ function PagesContent() {
                 <Route path="/TeamManagement" element={<TeamManagement />} />
                 
                 <Route path="/Navigation" element={<Navigation />} />
+                
+                <Route path="/README" element={<README />} />
                 
             </Routes>
         </Layout>

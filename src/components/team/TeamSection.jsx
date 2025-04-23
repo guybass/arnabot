@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { TeamMember } from '@/api/entities';
 import { Button } from '@/components/ui/button';
@@ -6,10 +7,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Plus,
   User,
-  Calendar,
   Briefcase,
   Star,
   Clock,
@@ -27,7 +28,7 @@ import {
   FileText,
   Users
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { applyOwnershipFilter } from '@/components/utils/ownershipFilters';
 
 const EXPERTISE_OPTIONS = {
   frontend_developer: ['React', 'Vue', 'Angular', 'TypeScript', 'CSS/SASS', 'WebGL', 'Responsive Design'],
@@ -72,29 +73,45 @@ const ROLE_ICONS = {
 };
 
 export default function TeamSection({ project }) {
-  const [members, setMembers] = useState([]);
+  const [allMembers, setAllMembers] = useState([]);
   const [showNewMember, setShowNewMember] = useState(false);
   const [selectedExpertise, setSelectedExpertise] = useState([]);
   const [newMember, setNewMember] = useState({
-    project_id: project?.id,
+    name: '',
     email: '',
     role: '',
     seniority: 'mid',
     expertise: [],
     availability: 'full_time',
-    start_date: format(new Date(), 'yyyy-MM-dd')
+    projects: [] // Array of project IDs
   });
 
   useEffect(() => {
-    if (project) {
-      loadTeamMembers();
-    }
+    loadTeamMembers();
   }, [project]);
 
   const loadTeamMembers = async () => {
-    const teamMembers = await TeamMember.filter({ project_id: project.id });
-    setMembers(teamMembers);
+    try {
+      // Apply ownership filter combined with project filter
+      const filter = await applyOwnershipFilter();
+      const teamMembers = await TeamMember.list();
+      
+      // We need to filter the team members based on the current project
+      const filteredMembers = teamMembers.filter(member => {
+        return member.projects && Array.isArray(member.projects) && 
+              member.projects.includes(project?.id);
+      });
+      
+      setAllMembers(filteredMembers);
+    } catch (error) {
+      console.error("Error loading team members:", error);
+    }
   };
+
+  // Filter team members for the current project
+  const projectMembers = allMembers.filter(member => {
+    return member.projects && Array.isArray(member.projects) && member.projects.includes(project?.id);
+  });
 
   const handleRoleChange = (role) => {
     setNewMember(prev => ({ ...prev, role }));
@@ -116,24 +133,52 @@ export default function TeamSection({ project }) {
   };
 
   const createMember = async () => {
-    await TeamMember.create(newMember);
-    setShowNewMember(false);
-    setNewMember({
-      project_id: project?.id,
-      email: '',
-      role: '',
-      seniority: 'mid',
-      expertise: [],
-      availability: 'full_time',
-      start_date: format(new Date(), 'yyyy-MM-dd')
-    });
-    setSelectedExpertise([]);
-    loadTeamMembers();
+    try {
+      // Ensure the current project is assigned to this team member
+      const projectsArray = newMember.projects || [];
+      
+      // Add current project to projects array if not already included
+      if (project && !projectsArray.includes(project.id)) {
+        projectsArray.push(project.id);
+      }
+      
+      const memberToCreate = {
+        ...newMember,
+        projects: projectsArray
+      };
+      
+      await TeamMember.create(memberToCreate);
+      setShowNewMember(false);
+      setNewMember({
+        name: '',
+        email: '',
+        role: '',
+        seniority: 'mid',
+        expertise: [],
+        availability: 'full_time',
+        projects: []
+      });
+      setSelectedExpertise([]);
+      loadTeamMembers();
+    } catch (error) {
+      console.error("Error creating team member:", error);
+    }
   };
 
-  const removeMember = async (memberId) => {
-    await TeamMember.delete(memberId);
-    loadTeamMembers();
+  const removeMemberFromProject = async (member) => {
+    try {
+      // Remove this project from the member's projects array
+      const updatedProjects = (member.projects || []).filter(id => id !== project.id);
+      
+      await TeamMember.update(member.id, {
+        ...member,
+        projects: updatedProjects
+      });
+      
+      loadTeamMembers();
+    } catch (error) {
+      console.error("Error updating team member:", error);
+    }
   };
 
   const getRoleColor = (role) => {
@@ -173,146 +218,163 @@ export default function TeamSection({ project }) {
       </CardHeader>
       <CardContent>
         <div className="grid gap-4">
-          {members.map(member => {
-            const RoleIcon = ROLE_ICONS[member.role] || User;
-            return (
-              <div
-                key={member.id}
-                className="flex items-start justify-between p-4 rounded-lg border hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-start gap-4">
-                  <div className={`p-2 rounded-lg ${getRoleColor(member.role)}`}>
-                    <RoleIcon className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{member.email}</span>
-                      <Badge variant="outline" className={getRoleColor(member.role)}>
-                        {member.role.replace(/_/g, ' ')}
-                      </Badge>
-                      <Badge variant="outline">
-                        {member.seniority}
-                      </Badge>
-                    </div>
-                    {member.expertise?.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {member.expertise.map(skill => (
-                          <Badge key={skill} variant="secondary" className="text-xs">
-                            {skill}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-3 mt-2 text-sm text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <Briefcase className="w-4 h-4" />
-                        {member.availability.replace('_', ' ')}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        {format(new Date(member.start_date), 'MMM d, yyyy')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeMember(member.id)}
+          {projectMembers.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No team members assigned to this project yet.
+              Click "Add Team Member" to assign someone to this project.
+            </div>
+          ) : (
+            projectMembers.map(member => {
+              const RoleIcon = ROLE_ICONS[member.role] || User;
+              return (
+                <div
+                  key={member.id}
+                  className="flex items-start justify-between p-4 rounded-lg border hover:bg-gray-50 transition-colors"
                 >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            );
-          })}
+                  <div className="flex items-start gap-4">
+                    <div className={`p-2 rounded-lg ${getRoleColor(member.role)}`}>
+                      <RoleIcon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{member.name || member.email}</span>
+                        <Badge variant="outline" className={getRoleColor(member.role)}>
+                          {member.role?.replace(/_/g, ' ') || 'No role assigned'}
+                        </Badge>
+                        <Badge variant="outline">
+                          {member.seniority}
+                        </Badge>
+                      </div>
+                      {member.email && <div className="text-sm text-gray-500">{member.email}</div>}
+                      {member.expertise?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {member.expertise.map(skill => (
+                            <Badge key={skill} variant="secondary" className="text-xs">
+                              {skill}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-3 mt-2 text-sm text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Briefcase className="w-4 h-4" />
+                          {member.availability?.replace('_', ' ') || 'No availability set'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeMemberFromProject(member)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              );
+            })
+          )}
         </div>
       </CardContent>
 
       <Dialog open={showNewMember} onOpenChange={setShowNewMember}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle>Add Team Member</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Input
-                  placeholder="Email"
-                  value={newMember.email}
-                  onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
-                />
-              </div>
-              <Select
-                value={newMember.role}
-                onValueChange={handleRoleChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.keys(ROLE_ICONS).map(role => (
-                    <SelectItem key={role} value={role}>
-                      {role.replace(/_/g, ' ')}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Select
-                value={newMember.seniority}
-                onValueChange={(value) => setNewMember({ ...newMember, seniority: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seniority Level" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="junior">Junior</SelectItem>
-                  <SelectItem value="mid">Mid-Level</SelectItem>
-                  <SelectItem value="senior">Senior</SelectItem>
-                  <SelectItem value="lead">Lead</SelectItem>
-                  <SelectItem value="principal">Principal</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select
-                value={newMember.availability}
-                onValueChange={(value) => setNewMember({ ...newMember, availability: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Availability" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="full_time">Full Time</SelectItem>
-                  <SelectItem value="part_time">Part Time</SelectItem>
-                  <SelectItem value="contractor">Contractor</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Input
-                type="date"
-                value={newMember.start_date}
-                onChange={(e) => setNewMember({ ...newMember, start_date: e.target.value })}
-              />
-            </div>
-            {newMember.role && EXPERTISE_OPTIONS[newMember.role] && (
-              <div>
-                <label className="text-sm font-medium mb-2 block">Expertise</label>
-                <div className="flex flex-wrap gap-2">
-                  {EXPERTISE_OPTIONS[newMember.role].map(skill => (
-                    <Badge
-                      key={skill}
-                      variant={selectedExpertise.includes(skill) ? 'default' : 'outline'}
-                      className="cursor-pointer"
-                      onClick={() => toggleExpertise(skill)}
-                    >
-                      {skill}
-                    </Badge>
-                  ))}
+          <ScrollArea className="h-[calc(80vh-180px)]">
+            <div className="space-y-4 py-4 pr-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">Name</label>
+                  <Input
+                    placeholder="Full Name"
+                    value={newMember.name}
+                    onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Email</label>
+                  <Input
+                    placeholder="Email Address"
+                    value={newMember.email}
+                    onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
+                  />
                 </div>
               </div>
-            )}
-          </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">Role</label>
+                  <Select
+                    value={newMember.role}
+                    onValueChange={handleRoleChange}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(ROLE_ICONS).map(role => (
+                        <SelectItem key={role} value={role}>
+                          {role.replace(/_/g, ' ')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Seniority</label>
+                  <Select
+                    value={newMember.seniority}
+                    onValueChange={(value) => setNewMember({ ...newMember, seniority: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seniority Level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="junior">Junior</SelectItem>
+                      <SelectItem value="mid">Mid-Level</SelectItem>
+                      <SelectItem value="senior">Senior</SelectItem>
+                      <SelectItem value="lead">Lead</SelectItem>
+                      <SelectItem value="principal">Principal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Availability</label>
+                <Select
+                  value={newMember.availability}
+                  onValueChange={(value) => setNewMember({ ...newMember, availability: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Availability" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="full_time">Full Time</SelectItem>
+                    <SelectItem value="part_time">Part Time</SelectItem>
+                    <SelectItem value="contractor">Contractor</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {newMember.role && EXPERTISE_OPTIONS[newMember.role] && (
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Expertise</label>
+                  <div className="flex flex-wrap gap-2">
+                    {EXPERTISE_OPTIONS[newMember.role].map(skill => (
+                      <Badge
+                        key={skill}
+                        variant={selectedExpertise.includes(skill) ? 'default' : 'outline'}
+                        className="cursor-pointer"
+                        onClick={() => toggleExpertise(skill)}
+                      >
+                        {skill}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNewMember(false)}>Cancel</Button>
             <Button onClick={createMember}>Add Member</Button>

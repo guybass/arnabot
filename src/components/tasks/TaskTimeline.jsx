@@ -1,317 +1,319 @@
 import React, { useState, useEffect } from 'react';
-import { Task, TaskDependency } from '@/api/entities';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from 'date-fns';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { 
+  ZoomIn, 
+  ZoomOut, 
+  ChevronLeft, 
+  ChevronRight, 
+  Link as LinkIcon,
+  Clock,
+  Calendar as CalendarIcon,
+  Download
+} from 'lucide-react';
+import { format, addDays, subDays, eachDayOfInterval, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
+import { Task, TaskDependency } from '@/api/entities';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Badge } from '@/components/ui/badge';
 
-export default function TaskTimeline({ tasks, project, onTasksChange }) {
+export default function TaskTimeline({ tasks, project, teamMembers, onTasksChange }) {
+  const [timeScale, setTimeScale] = useState('week'); // day, week, month, quarter
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [scale, setScale] = useState(1); // 1 = days, 2 = weeks, 3 = months
-  const [showTaskDetails, setShowTaskDetails] = useState(false);
-  const [selectedTask, setSelectedTask] = useState(null);
   const [dependencies, setDependencies] = useState([]);
-
-  useEffect(() => {
-    if (project) {
-      loadDependencies();
-    }
-  }, [project, tasks]);
-
-  const loadDependencies = async () => {
-    try {
-      const deps = await TaskDependency.filter({ project_id: project.id });
-      setDependencies(deps);
-    } catch (error) {
-      console.error("Error loading dependencies:", error);
-    }
-  };
-
-  const handleNextMonth = () => {
-    setCurrentDate(addMonths(currentDate, 1));
-  };
-
-  const handlePrevMonth = () => {
-    setCurrentDate(subMonths(currentDate, 1));
-  };
-
+  const [showDependencyModal, setShowDependencyModal] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [hoveredDate, setHoveredDate] = useState(null);
+  const [groupBy, setGroupBy] = useState('none'); // none, assignee, project, priority
+  
+  // Handle zoom controls
   const handleZoomIn = () => {
-    if (scale > 1) {
-      setScale(scale - 1);
+    const scales = ['day', 'week', 'month', 'quarter'];
+    const currentIndex = scales.indexOf(timeScale);
+    if (currentIndex > 0) {
+      setTimeScale(scales[currentIndex - 1]);
     }
   };
 
   const handleZoomOut = () => {
-    if (scale < 3) {
-      setScale(scale + 1);
+    const scales = ['day', 'week', 'month', 'quarter'];
+    const currentIndex = scales.indexOf(timeScale);
+    if (currentIndex < scales.length - 1) {
+      setTimeScale(scales[currentIndex + 1]);
     }
   };
 
-  const showTaskDetail = (task) => {
-    setSelectedTask(task);
-    setShowTaskDetails(true);
-  };
-
-  // Generate days for the timeline
-  const start = startOfMonth(currentDate);
-  const end = endOfMonth(currentDate);
-  const days = eachDayOfInterval({ start, end });
-
-  const dueDateTasks = tasks.filter(task => task.due_date);
-
-  // Group tasks by date
-  const tasksByDate = dueDateTasks.reduce((acc, task) => {
-    const dateKey = task.due_date;
-    if (!acc[dateKey]) {
-      acc[dateKey] = [];
+  // Navigation handlers
+  const handlePrevPeriod = () => {
+    switch (timeScale) {
+      case 'day':
+        setCurrentDate(subDays(currentDate, 1));
+        break;
+      case 'week':
+        setCurrentDate(subWeeks(currentDate, 1));
+        break;
+      // Add other cases for month and quarter
     }
-    acc[dateKey].push(task);
-    return acc;
-  }, {});
-
-  // Calculate task duration (for visualization)
-  const getTaskDuration = (task) => {
-    if (!task.due_date) return 1;
-    
-    // Default to 1 day if no actual start date is set
-    return 1;
   };
 
-  const getPriorityColor = (priority) => {
-    const colors = {
-      low: 'bg-blue-500',
-      medium: 'bg-yellow-500',
-      high: 'bg-orange-500',
-      urgent: 'bg-red-500'
-    };
-    return colors[priority] || 'bg-gray-500';
+  const handleNextPeriod = () => {
+    switch (timeScale) {
+      case 'day':
+        setCurrentDate(addDays(currentDate, 1));
+        break;
+      case 'week':
+        setCurrentDate(addWeeks(currentDate, 1));
+        break;
+      // Add other cases for month and quarter
+    }
   };
 
-  const renderTask = (task, index) => {
-    const duration = getTaskDuration(task);
-    const isPast = new Date(task.due_date) < new Date();
+  // Calculate visible date range
+  const getVisibleRange = () => {
+    switch (timeScale) {
+      case 'day':
+        return [currentDate];
+      case 'week':
+        const start = startOfWeek(currentDate);
+        const end = endOfWeek(currentDate);
+        return eachDayOfInterval({ start, end });
+      // Add other cases
+      default:
+        return [currentDate];
+    }
+  };
+
+  // Group tasks based on selected grouping
+  const getGroupedTasks = () => {
+    switch (groupBy) {
+      case 'assignee':
+        return tasks.reduce((acc, task) => {
+          const assignee = task.assigned_to || 'Unassigned';
+          if (!acc[assignee]) acc[assignee] = [];
+          acc[assignee].push(task);
+          return acc;
+        }, {});
+      case 'priority':
+        return tasks.reduce((acc, task) => {
+          if (!acc[task.priority]) acc[task.priority] = [];
+          acc[task.priority].push(task);
+          return acc;
+        }, {});
+      default:
+        return { 'All Tasks': tasks };
+    }
+  };
+
+  // Calculate task position and width based on dates
+  const getTaskStyle = (task) => {
+    const visibleDates = getVisibleRange();
+    const startDate = new Date(task.start_date || task.created_date);
+    const endDate = new Date(task.due_date || startDate);
     
-    // Find dependencies
-    const taskDependencies = dependencies.filter(
-      dep => dep.source_task_id === task.id || dep.target_task_id === task.id
+    // Calculate position percentage
+    const totalDays = visibleDates.length;
+    const startDay = visibleDates.findIndex(date => 
+      format(date, 'yyyy-MM-dd') === format(startDate, 'yyyy-MM-dd')
     );
+    
+    if (startDay === -1) return null;
+    
+    const duration = Math.min(
+      Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)),
+      totalDays - startDay
+    );
+    
+    return {
+      left: `${(startDay / totalDays) * 100}%`,
+      width: `${(duration / totalDays) * 100}%`,
+      backgroundColor: getTaskColor(task)
+    };
+  };
+
+  // Get task color based on status or priority
+  const getTaskColor = (task) => {
+    const colors = {
+      high: 'rgb(239 68 68)', // red
+      medium: 'rgb(234 179 8)', // yellow
+      low: 'rgb(34 197 94)', // green
+      completed: 'rgb(147 197 253)' // blue
+    };
+    
+    return colors[task.priority] || colors.medium;
+  };
+
+  // Render timeline grid
+  const renderTimelineGrid = () => {
+    const dates = getVisibleRange();
     
     return (
-      <TooltipProvider key={task.id}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div
-              className={`rounded-sm cursor-pointer mt-1 ${
-                isPast && task.status !== 'done' ? 'opacity-50' : ''
-              }`}
-              style={{ 
-                height: '24px', 
-                marginTop: `${index * 30}px` 
-              }}
-              onClick={() => showTaskDetail(task)}
-            >
-              <div 
-                className={`h-full text-xs text-white px-2 flex items-center rounded truncate ${getPriorityColor(task.priority)}`}
-                style={{ width: `${duration * 100}%` }}
-              >
-                {task.title}
-              </div>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>
-            <div className="space-y-1">
-              <div className="font-bold">{task.title}</div>
-              <div>Status: {task.status}</div>
-              <div>Due: {format(new Date(task.due_date), 'MMM d, yyyy')}</div>
-              {task.assigned_to && <div>Assigned: {task.assigned_to}</div>}
-              {taskDependencies.length > 0 && (
-                <div>Dependencies: {taskDependencies.length}</div>
-              )}
-            </div>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <div className="grid grid-cols-7 border-b">
+        {dates.map(date => (
+          <div 
+            key={date.toString()} 
+            className="p-2 text-center border-r text-sm"
+            onMouseEnter={() => setHoveredDate(date)}
+            onMouseLeave={() => setHoveredDate(null)}
+          >
+            <div className="font-medium">{format(date, 'EEE')}</div>
+            <div className="text-gray-500">{format(date, 'MMM d')}</div>
+          </div>
+        ))}
+      </div>
     );
+  };
+
+  // Render task bars
+  const renderTaskBars = () => {
+    const groupedTasks = getGroupedTasks();
+    
+    return Object.entries(groupedTasks).map(([group, tasks]) => (
+      <div key={group} className="mb-6">
+        <div className="font-medium mb-2 px-4">{group}</div>
+        <div className="relative min-h-[200px]">
+          {tasks.map((task, index) => {
+            const style = getTaskStyle(task);
+            if (!style) return null;
+            
+            return (
+              <TooltipProvider key={task.id}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div
+                      className="absolute h-8 rounded-md cursor-pointer transition-all hover:brightness-90"
+                      style={{
+                        ...style,
+                        top: `${index * 40}px`
+                      }}
+                      onClick={() => setSelectedTask(task)}
+                    >
+                      <div className="h-full flex items-center px-2 text-white text-sm truncate">
+                        {task.title}
+                      </div>
+                      {task.progress && (
+                        <div 
+                          className="absolute bottom-0 left-0 h-1 bg-white/30"
+                          style={{ width: `${task.progress}%` }}
+                        />
+                      )}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="space-y-1">
+                      <div className="font-medium">{task.title}</div>
+                      <div className="text-sm">
+                        {format(new Date(task.start_date || task.created_date), 'MMM d')} - 
+                        {format(new Date(task.due_date), 'MMM d')}
+                      </div>
+                      <div className="text-sm">{task.assigned_to || 'Unassigned'}</div>
+                      <div className="flex items-center gap-1">
+                        <Badge>{task.priority}</Badge>
+                        {task.progress && (
+                          <Badge variant="outline">{task.progress}% complete</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            );
+          })}
+        </div>
+      </div>
+    ));
   };
 
   return (
-    <Card className="h-[80vh]">
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
+    <Card className="h-[calc(100vh-12rem)]">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <CardTitle>Timeline</CardTitle>
         <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={handlePrevMonth}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="text-lg font-medium">
-            {format(currentDate, 'MMMM yyyy')}
+          <Select value={groupBy} onValueChange={setGroupBy}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Group by..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No Grouping</SelectItem>
+              <SelectItem value="assignee">By Assignee</SelectItem>
+              <SelectItem value="priority">By Priority</SelectItem>
+              <SelectItem value="project">By Project</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          <div className="flex items-center gap-1 border rounded-md p-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleZoomIn}
+              disabled={timeScale === 'day'}
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleZoomOut}
+              disabled={timeScale === 'quarter'}
+            >
+              <ZoomOut className="h-4 w-4" />
+            </Button>
           </div>
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={handleNextMonth}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={handleZoomIn}
-            disabled={scale === 1}
-          >
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={handleZoomOut}
-            disabled={scale === 3}
-          >
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <Button
-            onClick={() => {
-              // Open task creation dialog with current date
-              // This would connect to your existing task creation flow
-            }}
-          >
-            <Plus className="h-4 w-4 mr-1" /> Add Task
+          
+          <div className="flex items-center gap-1 border rounded-md p-1">
+            <Button variant="ghost" size="icon" onClick={handlePrevPeriod}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="px-2 font-medium">
+              {format(currentDate, 'MMM yyyy')}
+            </div>
+            <Button variant="ghost" size="icon" onClick={handleNextPeriod}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          
+          <Button variant="outline" size="sm">
+            <Download className="h-4 w-4 mr-2" />
+            Export
           </Button>
         </div>
       </CardHeader>
+      
       <CardContent className="p-0">
-        <div className="border-b bg-gray-50 flex">
-          {days.map(day => (
-            <div 
-              key={day.toString()} 
-              className={`text-center py-2 text-xs ${
-                isWeekend(day) ? 'bg-gray-100' : ''
-              }`}
-              style={{ width: `${100 / days.length}%` }}
-            >
-              <div className="font-medium">{format(day, 'd')}</div>
-              <div className="text-gray-500">{format(day, 'EEE')}</div>
+        <div className="border-t">
+          {renderTimelineGrid()}
+          <ScrollArea className="h-[calc(100vh-16rem)]">
+            <div className="p-4">
+              {renderTaskBars()}
             </div>
-          ))}
+          </ScrollArea>
         </div>
-        
-        <ScrollArea className="h-[calc(80vh-120px)]">
-          <div className="relative p-4">
-            {dueDateTasks.map((task, index) => {
-              // Calculate position based on due date
-              const taskDate = new Date(task.due_date);
-              const dayIndex = days.findIndex(day => 
-                day.getDate() === taskDate.getDate() && 
-                day.getMonth() === taskDate.getMonth()
-              );
-              
-              if (dayIndex === -1) return null; // Task not in current month view
-              
-              const leftPosition = `${(dayIndex / days.length) * 100}%`;
-              
-              return (
-                <div
-                  key={task.id}
-                  className="absolute"
-                  style={{ 
-                    left: leftPosition,
-                    top: `${index * 36 + 10}px`,
-                    width: `${100 / days.length}%`
-                  }}
-                >
-                  {renderTask(task, 0)}
-                </div>
-              );
-            })}
-          </div>
-        </ScrollArea>
       </CardContent>
       
-      <Dialog open={showTaskDetails} onOpenChange={setShowTaskDetails}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Task Details</DialogTitle>
-          </DialogHeader>
-          {selectedTask && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-xl font-semibold">{selectedTask.title}</h3>
-                <div className="mt-1 text-sm text-gray-500">
-                  {selectedTask.description || 'No description'}
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-sm font-medium">Status</div>
-                  <div>{selectedTask.status}</div>
-                </div>
-                <div>
-                  <div className="text-sm font-medium">Priority</div>
-                  <div>{selectedTask.priority}</div>
-                </div>
-                <div>
-                  <div className="text-sm font-medium">Due Date</div>
-                  <div>{selectedTask.due_date && format(new Date(selectedTask.due_date), 'MMM d, yyyy')}</div>
-                </div>
-                <div>
-                  <div className="text-sm font-medium">Assigned To</div>
-                  <div>{selectedTask.assigned_to || 'Unassigned'}</div>
-                </div>
-              </div>
-              
-              <div>
-                <div className="text-sm font-medium mb-2">Dependencies</div>
-                {dependencies
-                  .filter(dep => dep.source_task_id === selectedTask.id || dep.target_task_id === selectedTask.id)
-                  .map(dep => {
-                    const isSource = dep.source_task_id === selectedTask.id;
-                    const relatedTaskId = isSource ? dep.target_task_id : dep.source_task_id;
-                    const relatedTask = tasks.find(t => t.id === relatedTaskId);
-                    
-                    if (!relatedTask) return null;
-                    
-                    return (
-                      <div key={dep.id} className="text-sm flex items-center py-1">
-                        {isSource ? (
-                          <span>This task depends on: <strong>{relatedTask.title}</strong></span>
-                        ) : (
-                          <span><strong>{relatedTask.title}</strong> depends on this task</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                
-                {!dependencies.some(dep => 
-                  dep.source_task_id === selectedTask.id || dep.target_task_id === selectedTask.id
-                ) && (
-                  <div className="text-sm text-gray-500">No dependencies</div>
-                )}
-              </div>
-              
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setShowTaskDetails(false)}>
-                  Close
-                </Button>
-                <Button
-                  onClick={() => {
-                    // This would open your existing task edit form
-                    setShowTaskDetails(false);
-                  }}
-                >
-                  Edit Task
-                </Button>
-              </div>
+      {hoveredDate && (
+        <Popover>
+          <PopoverContent className="w-64">
+            <div className="font-medium mb-2">
+              {format(hoveredDate, 'MMMM d, yyyy')}
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            <div className="space-y-2">
+              {tasks
+                .filter(task => {
+                  const taskDate = new Date(task.due_date);
+                  return format(taskDate, 'yyyy-MM-dd') === format(hoveredDate, 'yyyy-MM-dd');
+                })
+                .map(task => (
+                  <div key={task.id} className="text-sm">
+                    <div className="font-medium">{task.title}</div>
+                    <div className="text-gray-500">{task.assigned_to}</div>
+                  </div>
+                ))}
+            </div>
+          </PopoverContent>
+        </Popover>
+      )}
     </Card>
   );
 }

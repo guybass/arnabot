@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -22,12 +23,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { User } from '@/api/entities';
+import { useState, useEffect } from 'react';
+import { Badge } from '@/components/ui/badge';
 
 export default function Layout({ children }) {
   const location = useLocation();
-  const [currentUser, setCurrentUser] = React.useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     loadCurrentUser();
   }, []);
 
@@ -35,6 +39,7 @@ export default function Layout({ children }) {
     try {
       const user = await User.me();
       setCurrentUser(user);
+      setIsAdmin(user.role === 'admin');
     } catch (error) {
       console.error("Error loading current user:", error);
     }
@@ -111,6 +116,7 @@ export default function Layout({ children }) {
                       {currentUser.full_name?.charAt(0) || 'U'}
                     </div>
                     <span className="hidden md:inline">{currentUser.full_name}</span>
+                    {isAdmin && <Badge variant="outline" className="ml-1">Admin</Badge>}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -141,3 +147,4 @@ export default function Layout({ children }) {
     </div>
   );
 }
+
