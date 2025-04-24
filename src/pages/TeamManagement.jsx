@@ -403,6 +403,14 @@ export default function TeamManagement() {
                     <SelectItem value="project_manager">Project Manager</SelectItem>
                     <SelectItem value="tech_lead">Tech Lead</SelectItem>
                     <SelectItem value="architect">Architect</SelectItem>
+                    <SelectItem value="cto">CTO</SelectItem>
+                    <SelectItem value="security_engineer">Security Engineer</SelectItem>
+                    <SelectItem value="database_admin">Database Admin</SelectItem>
+                    <SelectItem value="mobile_developer">Mobile Developer</SelectItem>
+                    <SelectItem value="data_scientist">Data Scientist</SelectItem>
+                    <SelectItem value="scrum_master">Scrum Master</SelectItem>
+                    <SelectItem value="technical_writer">Technical Writer</SelectItem>
+                    <SelectItem value="business_analyst">Business Analyst</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -560,6 +568,14 @@ export default function TeamManagement() {
                       <SelectItem value="project_manager">Project Manager</SelectItem>
                       <SelectItem value="tech_lead">Tech Lead</SelectItem>
                       <SelectItem value="architect">Architect</SelectItem>
+                      <SelectItem value="cto">CTO</SelectItem>
+                      <SelectItem value="security_engineer">Security Engineer</SelectItem>
+                      <SelectItem value="database_admin">Database Admin</SelectItem>
+                      <SelectItem value="mobile_developer">Mobile Developer</SelectItem>
+                      <SelectItem value="data_scientist">Data Scientist</SelectItem>
+                      <SelectItem value="scrum_master">Scrum Master</SelectItem>
+                      <SelectItem value="technical_writer">Technical Writer</SelectItem>
+                      <SelectItem value="business_analyst">Business Analyst</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

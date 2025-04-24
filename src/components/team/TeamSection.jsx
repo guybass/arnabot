@@ -48,7 +48,8 @@ const EXPERTISE_OPTIONS = {
   data_scientist: ['Python', 'R', 'Machine Learning', 'Data Analysis', 'Statistical Modeling'],
   scrum_master: ['Agile', 'Scrum', 'Kanban', 'Team Facilitation', 'Process Improvement'],
   technical_writer: ['Documentation', 'API Docs', 'Technical Communication', 'Content Strategy'],
-  business_analyst: ['Requirements Gathering', 'Process Modeling', 'Data Analysis', 'Stakeholder Management']
+  business_analyst: ['Requirements Gathering', 'Process Modeling', 'Data Analysis', 'Stakeholder Management'],
+  cto: ['Technology Strategy', 'Team Leadership', 'Enterprise Architecture', 'Innovation', 'Technical Vision']
 };
 
 const ROLE_ICONS = {
@@ -69,7 +70,8 @@ const ROLE_ICONS = {
   data_scientist: Brain,
   scrum_master: Users,
   technical_writer: FileText,
-  business_analyst: ClipboardList
+  business_analyst: ClipboardList,
+  cto: Star
 };
 
 export default function TeamSection({ project }) {
@@ -136,18 +138,19 @@ export default function TeamSection({ project }) {
     try {
       // Ensure the current project is assigned to this team member
       const projectsArray = newMember.projects || [];
-      
+    
       // Add current project to projects array if not already included
       if (project && !projectsArray.includes(project.id)) {
         projectsArray.push(project.id);
       }
-      
-      const memberToCreate = {
+    
+      // Create member with updated projects array
+      const memberData = {
         ...newMember,
         projects: projectsArray
       };
-      
-      await TeamMember.create(memberToCreate);
+    
+      await TeamMember.create(memberData);
       setShowNewMember(false);
       setNewMember({
         name: '',
@@ -158,7 +161,8 @@ export default function TeamSection({ project }) {
         availability: 'full_time',
         projects: []
       });
-      setSelectedExpertise([]);
+    
+      // Reload the team members to reflect changes
       loadTeamMembers();
     } catch (error) {
       console.error("Error creating team member:", error);
@@ -200,7 +204,8 @@ export default function TeamSection({ project }) {
       data_scientist: 'bg-fuchsia-100 text-fuchsia-800',
       scrum_master: 'bg-amber-100 text-amber-800',
       technical_writer: 'bg-lime-100 text-lime-800',
-      business_analyst: 'bg-orange-100 text-orange-800'
+      business_analyst: 'bg-orange-100 text-orange-800',
+      cto: 'bg-gray-100 text-gray-800'
     };
     return colors[role] || 'bg-gray-100 text-gray-800';
   };
@@ -303,6 +308,7 @@ export default function TeamSection({ project }) {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
+                {/* In the role dropdown, add the new CTO option */}
                 <div>
                   <label className="text-sm font-medium">Role</label>
                   <Select
@@ -310,14 +316,28 @@ export default function TeamSection({ project }) {
                     onValueChange={handleRoleChange}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select Role" />
+                      <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
                     <SelectContent>
-                      {Object.keys(ROLE_ICONS).map(role => (
-                        <SelectItem key={role} value={role}>
-                          {role.replace(/_/g, ' ')}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="frontend_developer">Frontend Developer</SelectItem>
+                      <SelectItem value="backend_developer">Backend Developer</SelectItem>
+                      <SelectItem value="fullstack_developer">Fullstack Developer</SelectItem>
+                      <SelectItem value="devops_engineer">DevOps Engineer</SelectItem>
+                      <SelectItem value="qa_engineer">QA Engineer</SelectItem>
+                      <SelectItem value="ui_designer">UI Designer</SelectItem>
+                      <SelectItem value="ux_designer">UX Designer</SelectItem>
+                      <SelectItem value="product_manager">Product Manager</SelectItem>
+                      <SelectItem value="project_manager">Project Manager</SelectItem>
+                      <SelectItem value="tech_lead">Tech Lead</SelectItem>
+                      <SelectItem value="architect">Architect</SelectItem>
+                      <SelectItem value="cto">CTO</SelectItem>
+                      <SelectItem value="security_engineer">Security Engineer</SelectItem>
+                      <SelectItem value="database_admin">Database Admin</SelectItem>
+                      <SelectItem value="mobile_developer">Mobile Developer</SelectItem>
+                      <SelectItem value="data_scientist">Data Scientist</SelectItem>
+                      <SelectItem value="scrum_master">Scrum Master</SelectItem>
+                      <SelectItem value="technical_writer">Technical Writer</SelectItem>
+                      <SelectItem value="business_analyst">Business Analyst</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
